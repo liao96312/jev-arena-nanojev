@@ -1760,7 +1760,7 @@ NanoJev 很快，但能力有限。
 - [ ] Candidate V2
 - [x] tactical scenario tests
 - [x] RuleAgentV2
-- [ ] Complexity benchmark
+- [x] Complexity benchmark
 
 ## P1 — 强烈建议
 

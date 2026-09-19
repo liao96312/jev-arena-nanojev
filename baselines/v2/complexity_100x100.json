@@ -1,0 +1,38 @@
+[
+  {
+    "agent": "random",
+    "episodes": 100,
+    "max_ticks": 100,
+    "states": 8733,
+    "deaths": 29,
+    "average_branch_factor": 6.069,
+    "p50_branch_factor": 6,
+    "p95_branch_factor": 9,
+    "one_action_rate": 0.0,
+    "two_action_rate": 0.001145,
+    "six_or_more_action_rate": 0.503607,
+    "tactical_states_analyzed": 500,
+    "immediate_forced_death_rate": 0.0,
+    "two_step_forced_death_rate": 0.0,
+    "mean_action_value_gap": 3.538,
+    "mean_policy_entropy": 1.291645
+  },
+  {
+    "agent": "rule",
+    "episodes": 100,
+    "max_ticks": 100,
+    "states": 10000,
+    "deaths": 0,
+    "average_branch_factor": 7.317,
+    "p50_branch_factor": 8,
+    "p95_branch_factor": 9,
+    "one_action_rate": 0.0,
+    "two_action_rate": 0.0058,
+    "six_or_more_action_rate": 0.7992,
+    "tactical_states_analyzed": 500,
+    "immediate_forced_death_rate": 0.0,
+    "two_step_forced_death_rate": 0.0,
+    "mean_action_value_gap": 0.881,
+    "mean_policy_entropy": 1.750089
+  }
+]
