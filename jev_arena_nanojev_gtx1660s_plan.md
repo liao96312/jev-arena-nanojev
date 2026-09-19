@@ -1935,7 +1935,7 @@ Greedy
 
 ## P1 — 1660S Training Patch
 
-- [ ] Fork NanoJev
+- [x] Fork NanoJev
 - [x] 增加 `--freeze-backbone`
 - [x] Backbone `requires_grad=False`
 - [x] Optimizer 只接受 trainable params

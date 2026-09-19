@@ -43,12 +43,11 @@ git clone https://github.com/liao96312/jev-arena-nanojev.git
 cd jev-arena-nanojev
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-1660s.txt
-git clone https://github.com/TianyuCodings/NanoJev.git third_party/NanoJev
-git -C third_party/NanoJev checkout 71a513bb0163b5634467842b523ee0c0ed6fb1c7
-git -C third_party/NanoJev apply ../../patches/nanojev-1660s.patch
+git clone --branch jev-arena-1660s https://github.com/liao96312/NanoJev.git third_party/NanoJev
 ```
 
 随后按下方命令下载 checkpoint。完成后双击 **`启动游戏.cmd`**，启动器会自动启动模型服务和游戏。
+`jev-arena-1660s` 基于上游提交 `71a513b`；`patches/nanojev-1660s.patch` 同时保留为离线补丁。
 
 ## 运行与验证
 
