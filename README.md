@@ -15,6 +15,7 @@ V1 已冻结为 [`v1-baseline`](https://github.com/liao96312/jev-arena-nanojev/t
 [`JEV_ARENA_V2_ROADMAP.md`](JEV_ARENA_V2_ROADMAP.md) 推进战术博弈升级。
 V2 Phase 1 已加入确定性的敌人 Intent：GUI、Observation 与 Replay 会提前显示敌人的移动或近战方向及倒计时。
 Charger 会以橙色标记显示冲锋预告，沿直线冲刺并能撞伤其它敌人。
+相邻敌人会动态提供 Shove 动作，可推入火焰、墙或其它敌人；环境击杀单独计数并写入 Replay。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 

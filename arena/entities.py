@@ -11,6 +11,10 @@ class Action(StrEnum):
     ATTACK_S = "attack_s"
     ATTACK_W = "attack_w"
     ATTACK_E = "attack_e"
+    SHOVE_N = "shove_n"
+    SHOVE_S = "shove_s"
+    SHOVE_W = "shove_w"
+    SHOVE_E = "shove_e"
     HEAL = "heal"
     WAIT = "wait"
 

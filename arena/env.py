@@ -66,7 +66,7 @@ class ArenaEnv:
             raise ValueError("charger_ratio must be between zero and one")
         self.seed = seed
         self.rng = random.Random(seed)
-        self.tick = self.score = self.gems_collected = self.kills = 0
+        self.tick = self.score = self.gems_collected = self.kills = self.environment_kills = 0
         self.damage_taken = 0
         self.previous_player_position: tuple[int, int] | None = None
         self.last_action: str | None = None
@@ -111,6 +111,8 @@ class ArenaEnv:
                 actions.append(Action(f"move_{direction}"))
             if self.enemy_at(target):
                 actions.append(Action(f"attack_{direction}"))
+                if self.in_bounds(self.add(target, direction)):
+                    actions.append(Action(f"shove_{direction}"))
         if self.player.medkits and self.player.hp < 100:
             actions.append(Action.HEAL)
         actions.append(Action.WAIT)
@@ -130,18 +132,17 @@ class ArenaEnv:
             self.player.position = self.add(self.player.position, action.value[-1])
             reward += self._collect(events)
             if self.player.position in self.fires:
-                reward += self._damage(self.config.fire_damage, events, "fire") - 3
+                reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
         elif action.value.startswith("attack_"):
             enemy = self.enemy_at(self.add(self.player.position, action.value[-1]))
             assert enemy is not None
-            enemy.hp -= self.config.attack_damage
             events.append("attack")
-            if enemy.hp <= 0:
-                self.enemies.remove(enemy)
-                self.kills += 1
-                self.score += 20
-                reward += 20
-                events.append("kill")
+            reward += self._damage_entity(enemy, self.config.attack_damage, events, "attack")
+        elif action.value.startswith("shove_"):
+            direction = action.value[-1]
+            enemy = self.enemy_at(self.add(self.player.position, direction))
+            assert enemy is not None
+            reward += self._push_entity(enemy, direction, events)
         elif action == Action.HEAL:
             self.player.medkits -= 1
             self.player.hp = min(100, self.player.hp + self.config.heal_amount)
@@ -183,12 +184,40 @@ class ArenaEnv:
             events.append("medkit")
         return reward
 
-    def _damage(self, amount: int, events: list[str], source: str) -> float:
-        actual = min(amount, self.player.hp)
-        self.player.hp -= actual
-        self.damage_taken += actual
-        events.append(f"damage:{source}:{actual}")
-        return -0.1 * actual
+    def _damage_entity(self, entity: Player | Enemy, amount: int, events: list[str], source: str) -> float:
+        actual = min(amount, entity.hp)
+        entity.hp -= actual
+        if entity is self.player:
+            self.damage_taken += actual
+            events.append(f"damage:{source}:{actual}")
+            return -0.1 * actual
+        events.append(f"enemy_damage:{source}:{actual}")
+        if entity.hp > 0:
+            return 0.0
+        self.enemies.remove(entity)
+        self.kills += 1
+        self.score += 20
+        if source != "attack":
+            self.environment_kills += 1
+            events.append("environment_kill")
+        events.append("kill")
+        return 20.0 if source == "attack" else 10.0
+
+    def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
+        destination = self.add(enemy.position, direction)
+        events.append(f"shove:{direction}")
+        if destination in self.walls:
+            return self._damage_entity(enemy, self.config.collision_damage, events, "wall")
+        blocker = self.enemy_at(destination)
+        if blocker:
+            reward = self._damage_entity(blocker, self.config.collision_damage, events, "collision")
+            if enemy in self.enemies:
+                reward += self._damage_entity(enemy, self.config.collision_damage, events, "collision")
+            return reward
+        enemy.position = destination
+        if destination in self.fires:
+            return self._damage_entity(enemy, self.config.fire_damage, events, "fire")
+        return 0.0
 
     def _plan_enemy_intents(self, enemies: list[Enemy] | None = None) -> None:
         occupied = {enemy.position for enemy in self.enemies}
@@ -236,7 +265,7 @@ class ArenaEnv:
                 enemy.stunned -= 1
             elif intent.kind == IntentType.MELEE and intent.direction:
                 if self.add(enemy.position, intent.direction) == self.player.position:
-                    reward += self._damage(intent.power, events, "enemy")
+                    reward += self._damage_entity(self.player, intent.power, events, "enemy")
                     events.append("enemy_melee")
             elif intent.kind == IntentType.MOVE and intent.direction:
                 target = self.add(enemy.position, intent.direction)
@@ -246,6 +275,10 @@ class ArenaEnv:
                     enemy.position = target
                     occupied.add(target)
                     events.append("enemy_move")
+                    if target in self.fires:
+                        reward += self._damage_entity(enemy, self.config.fire_damage, events, "fire")
+                        if enemy not in self.enemies:
+                            occupied.discard(target)
             elif intent.kind == IntentType.CHARGE and intent.direction:
                 reward += self._resolve_charge(enemy, intent.direction, occupied, events)
             if enemy in self.enemies:
@@ -264,24 +297,25 @@ class ArenaEnv:
                 break
             victim = self.enemy_at(target)
             if victim:
-                victim.hp -= self.config.collision_damage
+                reward += self._damage_entity(victim, self.config.collision_damage, events, "collision")
                 events.append(f"enemy_collision:{self.config.collision_damage}")
-                if victim.hp <= 0:
-                    self.enemies.remove(victim)
+                if victim not in self.enemies:
                     occupied.discard(target)
-                    self.kills += 1
-                    self.score += 20
-                    reward += 20
-                    events.extend(("friendly_fire_kill", "kill"))
+                    events.append("friendly_fire_kill")
                 break
             if target == self.player.position:
-                reward += self._damage(self.config.charger_damage, events, "charge")
+                reward += self._damage_entity(self.player, self.config.charger_damage, events, "charge")
                 events.append("charger_hit")
                 break
             occupied.remove(enemy.position)
             enemy.position = target
             occupied.add(target)
             events.append("charger_move")
+            if target in self.fires:
+                reward += self._damage_entity(enemy, self.config.fire_damage, events, "fire")
+                if enemy not in self.enemies:
+                    occupied.discard(target)
+                    break
         return reward
 
     @staticmethod
@@ -311,6 +345,7 @@ class ArenaEnv:
             "medkits": tuple(sorted(self.medkits)),
             "gems_collected": self.gems_collected,
             "kills": self.kills,
+            "environment_kills": self.environment_kills,
             "damage_taken": self.damage_taken,
             "done": self.done,
         }

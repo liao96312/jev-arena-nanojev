@@ -12,6 +12,10 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
         Action.ATTACK_S: "Attack the adjacent enemy south",
         Action.ATTACK_W: "Attack the adjacent enemy west",
         Action.ATTACK_E: "Attack the adjacent enemy east",
+        Action.SHOVE_N: "Shove the adjacent enemy north",
+        Action.SHOVE_S: "Shove the adjacent enemy south",
+        Action.SHOVE_W: "Shove the adjacent enemy west",
+        Action.SHOVE_E: "Shove the adjacent enemy east",
         Action.HEAL: "Use one carried medkit",
         Action.WAIT: "Remain in the current cell",
     }
@@ -34,5 +38,17 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                 before = min(env._distance(env.player.position, medkit) for medkit in env.medkits)
                 after = min(env._distance(target, medkit) for medkit in env.medkits)
                 description += f"; nearest medkit distance {before} to {after}"
+        elif action.value.startswith("shove_"):
+            direction = action.value[-1]
+            enemy = env.enemy_at(env.add(env.player.position, direction))
+            destination = env.add(enemy.position, direction)
+            if destination in env.fires:
+                description += f" into fire; expected {env.config.fire_damage} fire damage"
+            elif destination in env.walls:
+                description += f" into a wall; expected {env.config.collision_damage} collision damage"
+            elif env.enemy_at(destination):
+                description += f" into another enemy; both take {env.config.collision_damage} collision damage"
+            else:
+                description += " by one cell"
         candidates[action.value] = description
     return candidates

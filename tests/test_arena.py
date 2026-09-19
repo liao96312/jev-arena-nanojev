@@ -129,6 +129,32 @@ class ArenaTests(unittest.TestCase):
                          [enemy.enemy_type for enemy in second.enemies])
         self.assertIn(EnemyType.CHARGER, [enemy.enemy_type for enemy in first.enemies])
 
+    def test_shove_enemy_into_fire(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, fire_damage=10))
+        env.player.position = (3, 2)
+        enemy = Enemy((2, 2), hp=10)
+        env.enemies = [enemy]
+        env.fires = {(1, 2)}
+        env._plan_enemy_intents()
+        self.assertIn(Action.SHOVE_W, env.legal_actions())
+        self.assertIn("into fire", build_candidates(env)["shove_w"])
+        result = env.step(Action.SHOVE_W)
+        self.assertNotIn(enemy, env.enemies)
+        self.assertEqual((env.kills, env.environment_kills), (1, 1))
+        self.assertIn("environment_kill", result.events)
+        self.assertEqual(result.reward, 10.05)
+
+    def test_shove_collision_damages_both_enemies(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, collision_damage=5))
+        env.player.position = (1, 2)
+        pushed, blocker = Enemy((2, 2)), Enemy((3, 2))
+        env.enemies = [pushed, blocker]
+        env._plan_enemy_intents()
+        env.step(Action.SHOVE_E)
+        self.assertEqual((pushed.hp, blocker.hp), (25, 25))
+
 
 if __name__ == "__main__":
     unittest.main()

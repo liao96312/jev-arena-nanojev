@@ -269,15 +269,15 @@ SHOVE_E = "shove_e"
 
 ## 4.4 TODO
 
-- [ ] Action 新增四方向 Shove
-- [ ] `legal_actions()` 动态判断能否推
-- [ ] 新增 `_push_entity()`
-- [ ] 支持推怪入火
-- [ ] 支持推怪撞墙
-- [ ] 支持推怪撞怪
-- [ ] candidate description 描述推动结果
-- [ ] Renderer 增加 Shove 动画或事件文字
-- [ ] Dataset 支持 Shove candidate
+- [x] Action 新增四方向 Shove
+- [x] `legal_actions()` 动态判断能否推
+- [x] 新增 `_push_entity()`
+- [x] 支持推怪入火
+- [x] 支持推怪撞墙
+- [x] 支持推怪撞怪
+- [x] candidate description 描述推动结果
+- [x] Renderer 增加 Shove 动画或事件文字
+- [x] Dataset 支持 Shove candidate
 
 ## 4.5 候选描述示例
 
@@ -366,12 +366,12 @@ Electric Tile
 
 ## 5.4 TODO
 
-- [ ] `_damage()` 支持 Player / Enemy
-- [ ] Fire 能伤害 Enemy
-- [ ] Enemy 可因环境伤害死亡
-- [ ] 环境击杀计入 kills / score
-- [ ] Replay 记录 damage source
-- [ ] Dataset reward 区分直接击杀和环境击杀
+- [x] `_damage()` 支持 Player / Enemy
+- [x] Fire 能伤害 Enemy
+- [x] Enemy 可因环境伤害死亡
+- [x] 环境击杀计入 kills / score
+- [x] Replay 记录 damage source
+- [x] Dataset reward 区分直接击杀和环境击杀
 
 ---
 
@@ -1282,12 +1282,12 @@ TODO：
 
 TODO：
 
-- [ ] shove action
-- [ ] push resolver
-- [ ] enemy fire damage
-- [ ] wall collision
-- [ ] environmental kill
-- [ ] tests
+- [x] shove action
+- [x] push resolver
+- [x] enemy fire damage
+- [x] wall collision
+- [x] environmental kill
+- [x] tests
 
 验收：
 
@@ -1751,10 +1751,10 @@ NanoJev 很快，但能力有限。
 - [ ] 冻结 V1 baseline
 - [x] Enemy Intent
 - [x] Charger
-- [ ] Shove
-- [ ] Enemy 环境伤害
+- [x] Shove
+- [x] Enemy 环境伤害
 - [ ] Bomber
-- [ ] Friendly Fire
+- [x] Friendly Fire
 - [ ] Dash
 - [ ] Observation V2
 - [ ] Candidate V2

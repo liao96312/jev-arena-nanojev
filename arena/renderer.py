@@ -81,7 +81,7 @@ class ArenaRenderer:
             if animated_action.startswith("move_"):
                 player_position = (old_player[0] + (player_position[0] - old_player[0]) * eased,
                                    old_player[1] + (player_position[1] - old_player[1]) * eased)
-            elif animated_action.startswith("attack_"):
+            elif animated_action.startswith(("attack_", "shove_")):
                 dx, dy = {"n": (0, -1), "s": (0, 1), "w": (-1, 0), "e": (1, 0)}[animated_action[-1]]
                 lunge = 0.22 * math.sin(progress * math.pi)
                 player_position = (player_position[0] + dx * lunge, player_position[1] + dy * lunge)
@@ -180,6 +180,9 @@ class ArenaRenderer:
             if event == "gem": labels.append("获得宝石 +10")
             elif event == "medkit": labels.append("拾取药包 +3")
             elif event == "kill": labels.append("击败敌人 +20")
+            elif event == "environment_kill": labels.append("环境击杀！")
+            elif event.startswith("shove:"): labels.append("推动敌人")
+            elif event.startswith("enemy_collision:"): labels.append("敌人碰撞")
             elif event == "heal": labels.append("恢复生命")
             elif event == "level_complete": labels.append("关卡完成！准备进入下一关")
             elif event.startswith("damage:"): labels.append(f"受到 {event.rsplit(':', 1)[1]} 点伤害")
