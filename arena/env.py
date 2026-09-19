@@ -24,11 +24,14 @@ class ArenaConfig:
     enemy_move_interval: int = 1
     charger_ratio: float = 0.25
     bomber_ratio: float = 0.15
+    archer_ratio: float = 0.0
     charger_range: int = 4
     charger_damage: int = 10
     collision_damage: int = 15
     bomber_damage: int = 20
     bomber_radius: int = 1
+    archer_damage: int = 12
+    archer_countdown: int = 2
     dash_cooldown: int = 3
     finish_on_all_gems: bool = False
 
@@ -48,6 +51,7 @@ def campaign_config(level: int) -> ArenaConfig:
         enemy_move_interval=2,
         charger_ratio=min(0.45, 0.2 + level * 0.03),
         bomber_ratio=min(0.25, 0.1 + level * 0.02),
+        archer_ratio=min(0.2, 0.08 + level * 0.02),
         finish_on_all_gems=True,
     )
 
@@ -65,10 +69,11 @@ class ArenaEnv:
         self.reset(0)
 
     def reset(self, seed: int = 0) -> dict:
-        if self.config.enemy_move_interval < 1 or self.config.charger_range < 1:
+        if (self.config.enemy_move_interval < 1 or self.config.charger_range < 1 or
+                self.config.archer_countdown < 1):
             raise ValueError("enemy intervals and ranges must be positive")
-        if (not 0 <= self.config.charger_ratio <= 1 or not 0 <= self.config.bomber_ratio <= 1 or
-                self.config.charger_ratio + self.config.bomber_ratio > 1):
+        ratios = (self.config.charger_ratio, self.config.bomber_ratio, self.config.archer_ratio)
+        if any(not 0 <= ratio <= 1 for ratio in ratios) or sum(ratios) > 1:
             raise ValueError("enemy type ratios must be between zero and one and sum to at most one")
         self.seed = seed
         self.rng = random.Random(seed)
@@ -91,6 +96,9 @@ class ArenaEnv:
             roll = self.rng.random()
             enemy_type = (EnemyType.BOMBER if roll < self.config.bomber_ratio else
                           EnemyType.CHARGER if roll < self.config.bomber_ratio + self.config.charger_ratio else
+                          EnemyType.ARCHER if roll < sum((self.config.bomber_ratio,
+                                                         self.config.charger_ratio,
+                                                         self.config.archer_ratio)) else
                           EnemyType.CHASER)
             self.enemies.append(Enemy(next(take), enemy_type=enemy_type))
         self.gems = {next(take) for _ in range(self.config.gems)}
@@ -274,6 +282,12 @@ class ArenaEnv:
                 enemy.intent = Intent(IntentType.CHARGE, direction, self.config.enemy_move_interval,
                                       self.config.charger_damage)
                 continue
+            if enemy.enemy_type == EnemyType.ARCHER and (dx == 0 or dy == 0):
+                direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
+                if self._clear_shot_to_player(enemy.position, direction):
+                    enemy.intent = Intent(IntentType.SHOOT, direction, self.config.archer_countdown,
+                                          self.config.archer_damage)
+                    continue
             directions = []
             for direction in DIRECTIONS:
                 target = self.add(enemy.position, direction)
@@ -318,6 +332,8 @@ class ArenaEnv:
                             occupied.discard(target)
             elif intent.kind == IntentType.CHARGE and intent.direction:
                 reward += self._resolve_charge(enemy, intent.direction, occupied, events)
+            elif intent.kind == IntentType.SHOOT and intent.direction:
+                reward += self._resolve_shot(enemy, intent.direction, intent.power, events)
             elif intent.kind == IntentType.EXPLODE:
                 reward += self._resolve_explosion(enemy, intent.power, events)
                 occupied.discard(enemy.position)
@@ -326,6 +342,33 @@ class ArenaEnv:
         if resolved:
             self._plan_enemy_intents(resolved)
         return reward
+
+    def _clear_shot_to_player(self, origin: tuple[int, int], direction: str) -> bool:
+        target = origin
+        while True:
+            target = self.add(target, direction)
+            if not self.in_bounds(target) or target in self.walls:
+                return False
+            if target == self.player.position:
+                return True
+
+    def _resolve_shot(self, archer: Enemy, direction: str, damage: int,
+                      events: list[str]) -> float:
+        target = archer.position
+        events.append(f"archer_shot:{direction}")
+        while True:
+            target = self.add(target, direction)
+            if not self.in_bounds(target) or target in self.walls:
+                events.append("shot_blocked")
+                return 0.0
+            victim = self.enemy_at(target)
+            if victim:
+                reward = self._damage_entity(victim, damage, events, "shot")
+                events.append("archer_friendly_fire")
+                return reward
+            if target == self.player.position:
+                events.append("archer_hit")
+                return self._damage_entity(self.player, damage, events, "shot")
 
     def _resolve_explosion(self, bomber: Enemy, damage: int, events: list[str]) -> float:
         center = bomber.position
@@ -396,6 +439,17 @@ class ArenaEnv:
                         break
                     if target == position:
                         threats.append((f"{label}/charge", intent.power))
+                        break
+                    if self.enemy_at(target):
+                        break
+            elif intent.kind == IntentType.SHOOT and intent.direction:
+                target = enemy.position
+                while True:
+                    target = self.add(target, intent.direction)
+                    if not self.in_bounds(target) or target in self.walls:
+                        break
+                    if target == position:
+                        threats.append((f"{label}/shot", intent.power))
                         break
                     if self.enemy_at(target):
                         break

@@ -17,7 +17,8 @@ V2 Phase 1 已加入确定性的敌人 Intent：GUI、Observation 与 Replay 会
 Charger 会以橙色标记显示冲锋预告，沿直线冲刺并能撞伤其它敌人。
 相邻敌人会动态提供 Shove 动作，可推入火焰、墙或其它敌人；环境击杀单独计数并写入 Replay。
 Bomber 使用独立紫色贴图并显示两回合爆炸倒计时，爆炸会同时伤害玩家和范围内其它敌人。
-Chaser、Charger、Bomber、Archer 均使用 imagegen 生成的独立透明贴图；Archer 行为尚未启用。
+Chaser、Charger、Bomber、Archer 均使用 imagegen 生成的独立透明贴图。Archer 会提前两回合
+显示粉色射线并沿直线射击，玩家可以横向躲避，挡在射线上的其它敌人会先受到伤害。
 玩家在路径畅通时可向四个方向 Dash 两格，技能冷却 3 回合；Observation、动态候选与 GUI 会显示技能状态。
 RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见

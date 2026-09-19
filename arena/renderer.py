@@ -65,6 +65,8 @@ class ArenaRenderer:
         for position in env.medkits:
             self._sprite(position, "medkit")
         for enemy in env.enemies:
+            self._intent_line(env, enemy)
+        for enemy in env.enemies:
             previous = old_enemies.get(id(enemy), enemy.position)
             position = (previous[0] + (enemy.position[0] - previous[0]) * eased,
                         previous[1] + (enemy.position[1] - previous[1]) * eased)
@@ -168,13 +170,34 @@ class ArenaRenderer:
         icon = ("⚔" if intent.kind == IntentType.MELEE else
                 "B" if intent.kind == IntentType.EXPLODE else
                 "C" + arrows.get(intent.direction, "·") if intent.kind == IntentType.CHARGE else
+                "A" + arrows.get(intent.direction, "·") if intent.kind == IntentType.SHOOT else
                 arrows.get(intent.direction, "·"))
         color = ((255, 115, 115) if intent.kind == IntentType.MELEE else
                  (235, 100, 255) if intent.kind == IntentType.EXPLODE else
                  (255, 175, 70) if intent.kind == IntentType.CHARGE else (105, 210, 255))
+        if intent.kind == IntentType.SHOOT:
+            color = (255, 90, 135)
         label = self.small.render(f"{icon}{intent.countdown}", True, color)
         center = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + 4)
         self.screen.blit(label, label.get_rect(center=center))
+
+    def _intent_line(self, env: ArenaEnv, enemy) -> None:
+        intent = enemy.intent
+        if not intent or intent.kind != IntentType.SHOOT or not intent.direction:
+            return
+        target = enemy.position
+        end = target
+        while True:
+            target = env.add(target, intent.direction)
+            if not env.in_bounds(target) or target in env.walls:
+                break
+            end = target
+            if target == env.player.position or env.enemy_at(target):
+                break
+        start_pixel = (enemy.position[0] * self.CELL + self.CELL // 2,
+                       enemy.position[1] * self.CELL + self.CELL // 2)
+        end_pixel = (end[0] * self.CELL + self.CELL // 2, end[1] * self.CELL + self.CELL // 2)
+        self.pg.draw.line(self.screen, (255, 90, 135), start_pixel, end_pixel, 3)
 
     def _event_feedback(self, events: tuple[str, ...]) -> None:
         labels = []
@@ -186,6 +209,7 @@ class ArenaRenderer:
             elif event.startswith("shove:"): labels.append("推动敌人")
             elif event.startswith("enemy_collision:"): labels.append("敌人碰撞")
             elif event == "bomber_explode": labels.append("炸弹怪爆炸！")
+            elif event.startswith("archer_shot:"): labels.append("射手放箭！")
             elif event.startswith("dash:"): labels.append("冲刺！")
             elif event == "heal": labels.append("恢复生命")
             elif event == "level_complete": labels.append("关卡完成！准备进入下一关")

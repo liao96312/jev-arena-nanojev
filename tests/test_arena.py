@@ -172,6 +172,46 @@ class ArenaTests(unittest.TestCase):
         self.assertEqual(env.environment_kills, 1)
         self.assertIn("bomber_explode", result.events)
 
+    def test_archer_shot_is_telegraphed_and_dodgeable(self):
+        env = ArenaEnv(ArenaConfig(width=7, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0, archer_ratio=0))
+        env.player.position = (5, 2)
+        archer = Enemy((1, 2), enemy_type=EnemyType.ARCHER)
+        env.enemies = [archer]
+        env._plan_enemy_intents()
+        self.assertEqual((archer.intent.kind, archer.intent.direction, archer.intent.countdown),
+                         (IntentType.SHOOT, "e", 2))
+        env.step(Action.WAIT)
+        self.assertIn("archer@", env.imminent_threats()[0][0])
+        self.assertIn("hp 100->88", build_candidates(env)["wait"])
+        result = env.step(Action.MOVE_N)
+        self.assertEqual(env.player.hp, 100)
+        self.assertIn("shot_blocked", result.events)
+
+    def test_archer_shot_hits_first_enemy(self):
+        env = ArenaEnv(ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0, archer_ratio=0,
+                                   archer_damage=12))
+        env.player.position = (6, 1)
+        archer = Enemy((1, 1), enemy_type=EnemyType.ARCHER)
+        victim = Enemy((3, 1))
+        env.enemies = [archer, victim]
+        env._plan_enemy_intents()
+        env.step(Action.WAIT)
+        result = env.step(Action.WAIT)
+        self.assertEqual(victim.hp, 18)
+        self.assertEqual(env.player.hp, 100)
+        self.assertIn("archer_friendly_fire", result.events)
+
+    def test_archer_mix_is_seed_deterministic(self):
+        config = ArenaConfig(enemies=12, charger_ratio=0, bomber_ratio=0, archer_ratio=1)
+        first, second = ArenaEnv(config), ArenaEnv(config)
+        first.reset(42)
+        second.reset(42)
+        self.assertEqual([enemy.enemy_type for enemy in first.enemies],
+                         [enemy.enemy_type for enemy in second.enemies])
+        self.assertTrue(all(enemy.enemy_type == EnemyType.ARCHER for enemy in first.enemies))
+
     def test_dash_moves_two_cells_and_ticks_cooldown(self):
         env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
                                    medkits=0))
