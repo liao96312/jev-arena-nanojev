@@ -1386,8 +1386,8 @@ TODO：
 - [x] Intent awareness
 - [x] Environmental kill awareness
 - [x] Skill usage
-- [ ] rollout tests
-- [ ] generate 10k smoke dataset
+- [x] rollout tests
+- [x] generate 10k smoke dataset
 
 验收：
 
@@ -1401,9 +1401,9 @@ RuleAgent V2 明显高于 Random。
 
 TODO：
 
-- [ ] audit tokens
-- [ ] 调整 max_length
-- [ ] 10k dataset smoke train
+- [x] audit tokens
+- [x] 调整 max_length（压缩观测后沿用 192）
+- [x] 10k dataset smoke train
 - [ ] 100k dataset train
 - [ ] benchmark
 - [ ] calibration
@@ -1779,8 +1779,8 @@ NanoJev 很快，但能力有限。
 - [ ] 2 AP
 - [x] Barrel
 - [x] Map solvability check
-- [ ] Dataset V2
-- [ ] NanoJev V2 smoke train
+- [x] Dataset V2
+- [x] NanoJev V2 smoke train
 
 ## P2 — 后续
 

@@ -1,0 +1,22 @@
+{
+  "file": "datasets\\generated\\arena_v2_rollout_10k.jsonl",
+  "bytes": 15662878,
+  "sha256": "d114a2325a8a03a6c9f1bf5c072cd749bbcf5e40ce550dc90af5ca466fd0bb7a",
+  "records": 10000,
+  "groups": 218,
+  "splits": {
+    "train": 7000,
+    "dev": 1000,
+    "calibration": 500,
+    "test": 1000,
+    "ood": 500
+  },
+  "token_audit": {
+    "questions": 10000,
+    "p50": 155,
+    "p95": 171,
+    "max": 181,
+    "max_length": 192
+  },
+  "generator": "python scripts/generate_dataset.py --v2 --records 10000 --targets rollout --rollout-horizon 2 --output datasets/generated/arena_v2_rollout_10k.jsonl"
+}

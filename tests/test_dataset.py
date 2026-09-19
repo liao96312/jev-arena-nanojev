@@ -46,6 +46,18 @@ class DatasetTests(unittest.TestCase):
             rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
             self.assertTrue(any(0 < value < 1 for row in rows for value in row["gold_probs"]["action"].values()))
 
+    def test_v2_dataset_contains_tactical_features(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "v2.jsonl"
+            generate(path, records=100, per_seed=10, targets="rollout", rollout_horizon=1, v2=True)
+            import json
+            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertTrue(all(row["family_id"] == "arena_v2" for row in rows))
+            self.assertTrue(any("W bow=" in row["state"] for row in rows))
+            self.assertTrue(any("barrel=" in row["state"] for row in rows))
+            self.assertTrue(any(any(action.startswith("shoot_") for action in row["questions"]["action"]["criteria"])
+                                for row in rows))
+
 
 if __name__ == "__main__":
     unittest.main()

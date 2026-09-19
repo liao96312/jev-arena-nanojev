@@ -32,10 +32,13 @@ RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。
 V2 复杂度基准中 RuleV2 平均分支因子为 7.317，79.92% 状态有至少 6 个动作，抽样状态的
 立即/两步必死率均为 0；完整指标见 [`baselines/v2/complexity_100x100.json`](baselines/v2/complexity_100x100.json)。
-Observation V2 会输出最近敌人的类型、Intent 与倒计时，并用环境规则标记即时威胁；
+Observation V2 会输出最近两个敌人的类型短码、Intent 与倒计时，并用环境规则标记即时威胁；
 Candidate V2 会在克隆环境中预演一回合，给出实际 HP/击杀/宝石变化和下一拍伤害。
-100 条 rollout 的候选路径 token 审计为 P50/P95/最大值 174/184/191，结果见
-[`baselines/v2/token_audit_100.json`](baselines/v2/token_audit_100.json)，可继续使用 `max_length=192`。
+10k 条 V2 rollout 的候选路径 token 审计为 P50/P95/最大值 155/171/181，结果与数据哈希见
+[`arena_v2_rollout_10k.manifest.json`](datasets/generated/arena_v2_rollout_10k.manifest.json)，可继续使用 `max_length=192`。
+GTX 1660S 上的 50-step head-only 烟测将 dev CE 从 2.5932 降至 2.1505，test/OOD CE 为
+2.1711/2.1520，峰值显存 2.52GB；完整指标见
+[`nanojev_v2_smoke_50step.json`](baselines/v2/nanojev_v2_smoke_50step.json)。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 
@@ -94,6 +97,8 @@ python scripts/generate_dataset.py --records 1000 --targets rollout `
   --output datasets/generated/arena_rollout_shaped_1k.jsonl
 python scripts/generate_dataset.py --records 100000 --targets rollout `
   --output datasets/generated/arena_rollout_shaped_100k.jsonl
+python scripts/generate_dataset.py --v2 --records 10000 --targets rollout --rollout-horizon 2 `
+  --output datasets/generated/arena_v2_rollout_10k.jsonl
 python scripts/validate_dataset.py datasets/generated/arena_rule_1k.jsonl
 python scripts/audit_tokens.py datasets/generated/arena_rollout_memory_20k.jsonl
 ```
@@ -133,6 +138,10 @@ cd third_party/NanoJev
   --max-microbatch-tokens 1024 --eval-every 10 --max-length 192 `
   --head-lr 2e-4 --precision fp32
 ```
+
+V2 10k smoke train 使用相同冻结骨干配置，但需将输入换为
+`datasets\generated\arena_v2_rollout_10k.jsonl`，并设置
+`--max-microbatch-tokens 4096 --eval-every 50` 以容纳完整武器候选集合、避免重复全量评估。
 
 可复现的 500-step 配置：
 

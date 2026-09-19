@@ -7,10 +7,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agents import RuleAgent
-from arena import ArenaConfig, ArenaEnv
+from arena import ArenaConfig, ArenaEnv, campaign_config
 from arena.candidates import build_candidates
 from arena.dataset import split_for_seed, validate_dataset
-from arena.entities import Action
+from arena.entities import Action, PlayerLoadout
 from arena.observation import encode_state
 
 
@@ -49,7 +49,7 @@ def rollout_probabilities(env: ArenaEnv, candidate_ids, horizon: int = 8,
 
 
 def generate(output: Path, records: int, per_seed: int = 50, targets: str = "one_hot",
-             rollout_horizon: int = 8, temperature: float = 5.0) -> dict:
+             rollout_horizon: int = 8, temperature: float = 5.0, v2: bool = False) -> dict:
     if targets not in {"one_hot", "rollout"}:
         raise ValueError("targets must be one_hot or rollout")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -68,8 +68,13 @@ def generate(output: Path, records: int, per_seed: int = 50, targets: str = "one
             if counts[split] >= quotas[split]:
                 seed += 1
                 continue
-            config = ArenaConfig(enemies=5, fires=15) if split == "ood" else ArenaConfig()
-            env, agent = ArenaEnv(config), RuleAgent()
+            level = 8 if split == "ood" and v2 else 1 + seed % 5
+            config = (campaign_config(level) if v2 else
+                      ArenaConfig(enemies=5, fires=15) if split == "ood" else ArenaConfig())
+            loadout = (PlayerLoadout(level >= 2, level >= 4,
+                                     3 + seed % 4 if level >= 2 else 0,
+                                     6 + seed % 7 if level >= 4 else 0) if v2 else None)
+            env, agent = ArenaEnv(config, loadout), RuleAgent()
             env.reset(seed)
             if split == "ood":
                 env.player.hp = 50
@@ -88,12 +93,12 @@ def generate(output: Path, records: int, per_seed: int = 50, targets: str = "one
                     row = {
                         "id": record_id,
                         "state_id": record_id,
-                        "family_id": "arena_v1",
+                        "family_id": "arena_v2" if v2 else "arena_v1",
                         "split": split,
                         "state": encode_state(env),
                         "questions": {"action": {
                             "type": "choice",
-                            "instructions": "Choose the best action for survival and score.",
+                            "instructions": "Act." if v2 else "Choose the best action for survival and score.",
                             "criteria": candidates,
                         }},
                         "gold_probs": {"action": probabilities},
@@ -102,6 +107,8 @@ def generate(output: Path, records: int, per_seed: int = 50, targets: str = "one
                                      "target_source": targets, "rollout_horizon": rollout_horizon if returns else None,
                                      "rollout_temperature": temperature if returns else None,
                                      "potential_shaping": "gem_progress=2, low_hp_medkit_progress=1, backtrack=-2" if returns else None,
+                                     "arena_version": 2 if v2 else 1,
+                                     "campaign_level": level if v2 else None,
                                      "action_returns": returns},
                     }
                     handle.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -120,12 +127,13 @@ def main() -> None:
     parser.add_argument("--targets", choices=("one_hot", "rollout"), default="one_hot")
     parser.add_argument("--rollout-horizon", type=int, default=8)
     parser.add_argument("--temperature", type=float, default=5.0)
+    parser.add_argument("--v2", action="store_true")
     args = parser.parse_args()
     if args.records <= 0:
         parser.error("--records must be positive")
     print(json.dumps(generate(args.output, args.records, targets=args.targets,
                               rollout_horizon=args.rollout_horizon,
-                              temperature=args.temperature), ensure_ascii=False))
+                              temperature=args.temperature, v2=args.v2), ensure_ascii=False))
 
 
 if __name__ == "__main__":

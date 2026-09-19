@@ -424,7 +424,7 @@ class ArenaTests(unittest.TestCase):
         env.enemies = [bomber]
         env._plan_enemy_intents()
         bomber.intent.countdown = 1
-        self.assertIn("Immediate threats: bomber", encode_state(env))
+        self.assertIn("Threat bomber", encode_state(env))
         self.assertIn("hp 100->80", build_candidates(env)["wait"])
 
 
