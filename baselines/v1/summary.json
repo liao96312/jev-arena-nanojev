@@ -1,0 +1,64 @@
+{
+  "tag": "v1-baseline",
+  "commit": "017cf9ee1818625a9dc0259c96e1eba9ecf193ff",
+  "benchmark": {
+    "episodes": 100,
+    "max_ticks": 500,
+    "agents": [
+      {
+        "agent": "random",
+        "mean_reward": 6.914,
+        "median_reward": 1.075,
+        "mean_ticks": 113.38,
+        "gems": 47,
+        "kills": 183,
+        "damage": 10145,
+        "deaths": 91
+      },
+      {
+        "agent": "rule",
+        "mean_reward": 144.11,
+        "median_reward": 152.0,
+        "mean_ticks": 500.0,
+        "gems": 525,
+        "kills": 292,
+        "damage": 3260,
+        "deaths": 0
+      }
+    ],
+    "nanojev_100_seed": null,
+    "nanojev_status": "pending: full FP32 inference benchmark is a separate long-running task"
+  },
+  "complexity": [
+    {
+      "agent": "random",
+      "states": 11338,
+      "average_branch_factor": 4.534,
+      "p50_branch_factor": 5,
+      "p95_branch_factor": 5,
+      "one_action_rate": 0.0,
+      "two_action_rate": 0.003263,
+      "six_or_more_action_rate": 0.004763
+    },
+    {
+      "agent": "rule",
+      "states": 50000,
+      "average_branch_factor": 4.615,
+      "p50_branch_factor": 5,
+      "p95_branch_factor": 6,
+      "one_action_rate": 0.0,
+      "two_action_rate": 0.01358,
+      "six_or_more_action_rate": 0.16562
+    }
+  ],
+  "datasets": [
+    {
+      "records": 20000,
+      "sha256": "5a5e4b492d71e0b34b702965752057411d9b8b9fefc323fda8d205c41604d348"
+    },
+    {
+      "records": 100000,
+      "sha256": "5b468a10dfd6fc2dff440cefd60fee4fddeebdee68cff66403556aa97b68d291"
+    }
+  ]
+}

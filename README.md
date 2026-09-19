@@ -10,6 +10,10 @@
 完全本地的网格决策实验场。当前实现覆盖确定性 Arena、动态候选动作、
 Random/Rule/NanoJev Agent、Pygame、Replay、数据生成、统一 seed Benchmark 和 1660S head-only 训练。
 
+V1 已冻结为 [`v1-baseline`](https://github.com/liao96312/jev-arena-nanojev/tree/v1-baseline)，
+奖励、复杂度和数据集基线见 [`baselines/v1/summary.json`](baselines/v1/summary.json)；后续按
+[`JEV_ARENA_V2_ROADMAP.md`](JEV_ARENA_V2_ROADMAP.md) 推进战术博弈升级。
+
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 
 ## 核心能力
