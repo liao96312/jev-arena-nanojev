@@ -193,6 +193,24 @@ class ArenaTests(unittest.TestCase):
         env.walls = {(2, 2)}
         self.assertNotIn(Action.DASH_E, env.legal_actions())
 
+    def test_rule_uses_environmental_shove(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0))
+        env.player.position = (3, 2)
+        env.enemies = [Enemy((2, 2), hp=10)]
+        env.fires = {(1, 2)}
+        env._plan_enemy_intents()
+        self.assertEqual(RuleAgent().act(env), Action.SHOVE_W)
+
+    def test_rule_dashes_out_of_overlapping_blasts(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, bomber_radius=2, charger_ratio=0, bomber_ratio=0))
+        env.player.position = (2, 2)
+        env.enemies = [Enemy((2, 1), enemy_type=EnemyType.BOMBER),
+                       Enemy((1, 2), enemy_type=EnemyType.BOMBER)]
+        env._plan_enemy_intents()
+        self.assertEqual(RuleAgent().act(env), Action.DASH_S)
+
 
 if __name__ == "__main__":
     unittest.main()

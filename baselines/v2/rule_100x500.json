@@ -1,0 +1,26 @@
+[
+  {
+    "label": "Random",
+    "episodes": 100,
+    "max_ticks": 500,
+    "mean_reward": 17.49,
+    "median_reward": 11.125,
+    "mean_ticks": 246.3,
+    "gems": 121,
+    "kills": 237,
+    "damage": 10415,
+    "deaths": 79
+  },
+  {
+    "label": "RuleV2",
+    "episodes": 100,
+    "max_ticks": 500,
+    "mean_reward": 126.95,
+    "median_reward": 131.0,
+    "mean_ticks": 500.0,
+    "gems": 526,
+    "kills": 254,
+    "damage": 90,
+    "deaths": 0
+  }
+]

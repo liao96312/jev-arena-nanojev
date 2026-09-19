@@ -1375,10 +1375,10 @@ TODO：
 
 TODO：
 
-- [ ] Threat scoring
-- [ ] Intent awareness
-- [ ] Environmental kill awareness
-- [ ] Skill usage
+- [x] Threat scoring
+- [x] Intent awareness
+- [x] Environmental kill awareness
+- [x] Skill usage
 - [ ] rollout tests
 - [ ] generate 10k smoke dataset
 
@@ -1758,8 +1758,8 @@ NanoJev 很快，但能力有限。
 - [x] Dash
 - [ ] Observation V2
 - [ ] Candidate V2
-- [ ] tactical scenario tests
-- [ ] RuleAgentV2
+- [x] tactical scenario tests
+- [x] RuleAgentV2
 - [ ] Complexity benchmark
 
 ## P1 — 强烈建议

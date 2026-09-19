@@ -19,6 +19,9 @@ Charger 会以橙色标记显示冲锋预告，沿直线冲刺并能撞伤其它
 Bomber 使用独立紫色贴图并显示两回合爆炸倒计时，爆炸会同时伤害玩家和范围内其它敌人。
 Chaser、Charger、Bomber、Archer 均使用 imagegen 生成的独立透明贴图；Archer 行为尚未启用。
 玩家在路径畅通时可向四个方向 Dash 两格，技能冷却 3 回合；Observation、动态候选与 GUI 会显示技能状态。
+RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
+固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
+[`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 
