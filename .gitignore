@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+runs/
+replays/*.jsonl
+datasets/generated/*.jsonl
+checkpoints/
+third_party/NanoJev/
+.env
+.env.*
+!.env.example

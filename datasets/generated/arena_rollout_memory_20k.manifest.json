@@ -1,0 +1,14 @@
+{
+  "file": "datasets\\generated\\arena_rollout_memory_20k.jsonl",
+  "bytes": 25591622,
+  "sha256": "5a5e4b492d71e0b34b702965752057411d9b8b9fefc323fda8d205c41604d348",
+  "records": 20000,
+  "groups": 401,
+  "splits": {
+    "train": 14000,
+    "dev": 2000,
+    "calibration": 1000,
+    "test": 2000,
+    "ood": 1000
+  }
+}

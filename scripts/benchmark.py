@@ -1,0 +1,96 @@
+import argparse
+import csv
+import math
+import statistics
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from agents import NanoJevAgent, RandomAgent, RuleAgent
+from arena import ArenaConfig, ArenaEnv
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    ordered = sorted(values)
+    return ordered[round((len(ordered) - 1) * fraction)] if ordered else 0.0
+
+
+def run(agent_name: str, episodes: int, max_ticks: int = 500) -> list[dict]:
+    rows = []
+    for seed in range(episodes):
+        env = ArenaEnv(ArenaConfig(max_ticks=max_ticks))
+        env.reset(seed)
+        agent = RandomAgent(seed) if agent_name == "random" else RuleAgent()
+        reward = 0.0
+        while not env.done:
+            reward += env.step(agent.act(env)).reward
+        rows.append({"agent": agent_name, "seed": seed, "reward": round(reward, 3),
+                     "ticks": env.tick, "gems": env.gems_collected, "kills": env.kills,
+                     "damage": env.damage_taken, "death": int(env.player.hp <= 0),
+                     "latency_p50_ms": 0.0, "latency_p95_ms": 0.0, "mean_entropy": 0.0,
+                     "selector_interventions": 0, "two_step_backtracks": 0, "unique_cells": 0})
+    return rows
+
+
+def run_nanojev(episodes: int, max_ticks: int = 500, policy: str = "hybrid",
+                max_batch_states: int = 1) -> list[dict]:
+    envs = [ArenaEnv(ArenaConfig(max_ticks=max_ticks)) for _ in range(episodes)]
+    for seed, env in enumerate(envs):
+        env.reset(seed)
+    agent, rewards = NanoJevAgent(policy_mode=policy, max_batch_states=max_batch_states), [0.0] * episodes
+    latencies, entropies = [[] for _ in envs], [[] for _ in envs]
+    positions = [[] for _ in envs]
+    interventions = [0] * episodes
+    while active := [i for i, env in enumerate(envs) if not env.done]:
+        actions = agent.act_many([envs[i] for i in active])
+        for offset, (i, action) in enumerate(zip(active, actions)):
+            rewards[i] += envs[i].step(action).reward
+            if agent.last_batch_state_latency_ms[offset]:
+                latencies[i].append(agent.last_batch_state_latency_ms[offset])
+            distribution = agent.last_batch_probabilities[offset]
+            entropies[i].append(-sum(p * math.log(p) for p in distribution.values() if p))
+            positions[i].append(envs[i].player.position)
+            interventions[i] += agent.last_batch_reasons[offset] != "model_argmax"
+    return [{"agent": f"nanojev_{policy}", "seed": seed, "reward": round(rewards[seed], 3),
+             "ticks": env.tick, "gems": env.gems_collected, "kills": env.kills,
+             "damage": env.damage_taken, "death": int(env.player.hp <= 0),
+             "latency_p50_ms": round(percentile(latencies[seed], .5), 3),
+             "latency_p95_ms": round(percentile(latencies[seed], .95), 3),
+             "mean_entropy": round(statistics.mean(entropies[seed]), 6),
+             "selector_interventions": interventions[seed],
+             "two_step_backtracks": sum(i >= 2 and positions[seed][i] == positions[seed][i-2]
+                                        for i in range(len(positions[seed]))),
+             "unique_cells": len(set(positions[seed]))}
+            for seed, env in enumerate(envs)]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--episodes", type=int, default=100)
+    parser.add_argument("--max-ticks", type=int, default=500)
+    parser.add_argument("--agents", nargs="+", choices=("random", "rule", "nanojev"), default=("random", "rule"))
+    parser.add_argument("--policy", choices=("model", "memory", "hybrid"), default="hybrid")
+    parser.add_argument("--max-batch-states", type=int, default=1)
+    parser.add_argument("--csv", type=Path)
+    args = parser.parse_args()
+    rows = []
+    for name in args.agents:
+        rows += run_nanojev(args.episodes, args.max_ticks, args.policy, args.max_batch_states) if name == "nanojev" else run(name, args.episodes, args.max_ticks)
+    for name in args.agents:
+        label = f"nanojev_{args.policy}" if name == "nanojev" else name
+        own = [row for row in rows if row["agent"] == label]
+        print(f"{name:6} mean_reward={statistics.mean(r['reward'] for r in own):8.2f} "
+              f"mean_ticks={statistics.mean(r['ticks'] for r in own):7.1f} "
+              f"gems={sum(r['gems'] for r in own):4} kills={sum(r['kills'] for r in own):4} "
+              f"p95_ms={statistics.mean(r['latency_p95_ms'] for r in own):7.1f}")
+    if args.csv:
+        args.csv.parent.mkdir(parents=True, exist_ok=True)
+        with args.csv.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=rows[0])
+            writer.writeheader()
+            writer.writerows(rows)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,125 @@
+diff --git a/scripts/serve_decisions.py b/scripts/serve_decisions.py
+index 65b2ea5..c9b51e9 100644
+--- a/scripts/serve_decisions.py
++++ b/scripts/serve_decisions.py
+@@ -21,7 +21,12 @@ def server_class(engine, web_root):
+         def do_GET(self):
+             route=urlparse(self.path).path
+             if route=='/api/health':
+-                self.send_json(200,{'ready':True,'model_loaded_once':True,'provider_calls':0});return
++                import torch
++                gpu = ({'name':torch.cuda.get_device_name(0),
++                        'allocated_gb':round(torch.cuda.memory_allocated()/1e9,3),
++                        'reserved_gb':round(torch.cuda.memory_reserved()/1e9,3)}
++                       if torch.cuda.is_available() else None)
++                self.send_json(200,{'ready':True,'model_loaded_once':True,'provider_calls':0,'gpu':gpu});return
+             relative=unquote(route).lstrip('/') or 'index.html'
+             target=(web_root/relative).resolve()
+             if not target.is_relative_to(web_root) or not target.is_file():
+diff --git a/scripts/train_pipeline_decisions.py b/scripts/train_pipeline_decisions.py
+index aa20d24..6992e84 100644
+--- a/scripts/train_pipeline_decisions.py
++++ b/scripts/train_pipeline_decisions.py
+@@ -402,6 +402,7 @@ def main():
+     p.add_argument("--max-length", type=int, default=512)
+     p.add_argument("--seed", type=int, default=17)
+     p.add_argument("--backbone-lr", type=float, default=2e-5)
++    p.add_argument("--freeze-backbone", action="store_true", help="Train only the decision head; omit backbone optimizer state and graph")
+     p.add_argument("--head-lr", type=float, default=2e-4)
+     p.add_argument("--head-warmup-lr", type=float, default=1e-3)
+     p.add_argument("--precision", choices=["bf16", "fp32"], default="bf16")
+@@ -427,7 +428,9 @@ def main():
+     args.head_steps = (0 if args.init_checkpoint else 12) if args.head_steps is None else args.head_steps
+     if min(args.steps, args.batch_questions, args.microbatch_questions, args.eval_every, args.max_length) <= 0 or args.head_steps < 0 or args.max_microbatch_tokens < 0:
+         p.error("Invalid steps/batch/token limits")
+-    if any(not math.isfinite(v) or v <= 0 for v in (args.backbone_lr, args.head_lr, args.head_warmup_lr)):
++    if (not math.isfinite(args.backbone_lr) or args.backbone_lr < 0 or
++            (not args.freeze_backbone and args.backbone_lr == 0) or
++            any(not math.isfinite(v) or v <= 0 for v in (args.head_lr, args.head_warmup_lr))):
+         p.error("Learning rates must be finite and positive")
+     out = Path(args.output_dir)
+     if (out / "config.json").exists() or (out / "best.safetensors").exists():
+@@ -467,6 +470,8 @@ def main():
+     if tokenizer.pad_token_id is None:
+         tokenizer.pad_token = tokenizer.eos_token
+     model.backbone.config.use_cache = False
++    if args.freeze_backbone:
++        model.backbone.requires_grad_(False)
+     if args.gradient_checkpointing:
+         model.backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+     if args.max_length > getattr(model.backbone.config, "max_position_embeddings", args.max_length):
+@@ -494,6 +499,7 @@ def main():
+               "gpu": torch.cuda.get_device_name(0), "parameter_storage": "float32",
+               "forward_autocast": "bfloat16" if args.precision == "bf16" else "disabled",
+               "parameter_count": sum(t.numel() for t in model.parameters()),
++              "trainable_parameter_count": sum(t.numel() for t in model.parameters() if t.requires_grad),
+               "train_questions": len(train), "all_train_questions": len(splits["train"]),
+               "schema_counts": data_schema_summary(records),
+               "loss_description": "equal question weight; complete candidate normalization; sampled loss is a score-function surrogate" if args.loss == "paired_brier_pg" else "per-question proper loss; complete candidate normalization",
+@@ -506,7 +512,12 @@ def main():
+     dump(out / "initial_dev_metrics.json", initial)
+     head = [param for name, param in model.named_parameters() if not name.startswith("backbone.")]
+     body = list(model.backbone.parameters())
+-    optimizer = torch.optim.AdamW([{"params": body, "lr": args.backbone_lr}, {"params": head, "lr": args.head_lr}], weight_decay=.01)
++    if args.freeze_backbone:
++        optimizer = torch.optim.AdamW(head, lr=args.head_lr, weight_decay=.01)
++        head_group = 0
++    else:
++        optimizer = torch.optim.AdamW([{"params": body, "lr": args.backbone_lr}, {"params": head, "lr": args.head_lr}], weight_decay=.01)
++        head_group = 1
+     best, best_step, logs = float("inf"), None, []
+     started = time.perf_counter()
+     from calibrated_objectives import grouped_calibrated_loss
+@@ -514,12 +525,16 @@ def main():
+     torch.cuda.reset_peak_memory_stats()
+     for step in range(args.head_steps + args.steps):
+         warm = step < args.head_steps
+-        for param in body:
+-            param.requires_grad_(not warm)
+-        optimizer.param_groups[1]["lr"] = args.head_warmup_lr if warm else args.head_lr
++        if not args.freeze_backbone:
++            for param in body:
++                param.requires_grad_(not warm)
++        optimizer.param_groups[head_group]["lr"] = args.head_warmup_lr if warm else args.head_lr
+         batch = random.sample(train, args.batch_questions)
+         groups = pack_complete_questions(batch, args.microbatch_questions, args.max_microbatch_tokens)
+-        model.train(); optimizer.zero_grad(set_to_none=True)
++        model.train()
++        if args.freeze_backbone:
++            model.backbone.eval()
++        optimizer.zero_grad(set_to_none=True)
+         loss_sum = 0.0
+         for group in groups:
+             with torch.autocast("cuda", dtype=torch.bfloat16, enabled=args.precision == "bf16"):
+@@ -530,9 +545,9 @@ def main():
+             if not torch.isfinite(loss):
+                 raise RuntimeError("Nonfinite loss")
+             loss.backward(); loss_sum += float(loss.detach())
+-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, error_if_nonfinite=True)
++        torch.nn.utils.clip_grad_norm_(head if args.freeze_backbone else model.parameters(), 1.0, error_if_nonfinite=True)
+         optimizer.step()
+-        item = {"step": step + 1, "phase": "head" if warm else "full", "loss": loss_sum,
++        item = {"step": step + 1, "phase": "head_warmup" if warm else "head_only" if args.freeze_backbone else "full", "loss": loss_sum,
+                 "questions": len(batch), "microbatches": len(groups), "elapsed_seconds": time.perf_counter() - started,
+                 "batch_question_ids_sha256": hashlib.sha256("\n".join(ex["id"] for ex in batch).encode()).hexdigest()}
+         if not warm and ((step + 1 - args.head_steps) % args.eval_every == 0 or step + 1 == args.head_steps + args.steps):
+diff --git a/scripts/train_toy_decisions.py b/scripts/train_toy_decisions.py
+index 203c5ac..383c908 100644
+--- a/scripts/train_toy_decisions.py
++++ b/scripts/train_toy_decisions.py
+@@ -110,8 +110,13 @@ class DecisionModel(nn.Module):
+         for i, ids in enumerate(paths):
+             tokens[i, :len(ids)] = torch.tensor(ids, device=device)
+         attention = torch.arange(width, device=device)[None, :] < lengths[:, None]
+-        hidden = self.backbone(input_ids=tokens, attention_mask=attention,
+-                               use_cache=False).last_hidden_state
++        if any(param.requires_grad for param in self.backbone.parameters()):
++            hidden = self.backbone(input_ids=tokens, attention_mask=attention,
++                                   use_cache=False).last_hidden_state
++        else:
++            with torch.no_grad():
++                hidden = self.backbone(input_ids=tokens, attention_mask=attention,
++                                       use_cache=False).last_hidden_state
+         leaves = hidden[torch.arange(len(paths), device=device), lengths-1]
+         kmax = max(len(ex['candidate_ids']) for ex in examples)
+         h = leaves.new_zeros((len(examples), kmax, leaves.shape[-1]))

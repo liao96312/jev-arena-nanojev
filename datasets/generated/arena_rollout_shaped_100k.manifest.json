@@ -1,0 +1,14 @@
+{
+  "file": "datasets\\generated\\arena_rollout_shaped_100k.jsonl",
+  "bytes": 147473269,
+  "sha256": "5b468a10dfd6fc2dff440cefd60fee4fddeebdee68cff66403556aa97b68d291",
+  "records": 100000,
+  "groups": 2066,
+  "splits": {
+    "train": 70000,
+    "dev": 10000,
+    "calibration": 5000,
+    "test": 10000,
+    "ood": 5000
+  }
+}
