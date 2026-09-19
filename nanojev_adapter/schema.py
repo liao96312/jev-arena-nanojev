@@ -13,7 +13,7 @@ def decision_request(env: ArenaEnv) -> dict:
             "questions": {
                 "action": {
                     "type": "choice",
-                    "instructions": "Choose the best immediate action to maximize survival and long-term score.",
+                    "instructions": "Choose the best action for survival and score.",
                     "criteria": build_candidates(env),
                 }
             },

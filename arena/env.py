@@ -374,6 +374,33 @@ class ArenaEnv:
     def _distance(a: tuple[int, int], b: tuple[int, int]) -> int:
         return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
+    def imminent_threats(self, position: tuple[int, int] | None = None) -> tuple[tuple[str, int], ...]:
+        position = position or self.player.position
+        threats: list[tuple[str, int]] = []
+        for enemy in self.enemies:
+            intent = enemy.intent
+            if not intent or intent.countdown > 1:
+                continue
+            label = f"{enemy.enemy_type.value}@{enemy.position[0]},{enemy.position[1]}"
+            if intent.kind == IntentType.EXPLODE:
+                if self._distance(enemy.position, position) <= self.config.bomber_radius:
+                    threats.append((f"{label}/blast", intent.power))
+            elif intent.kind == IntentType.MELEE and intent.direction:
+                if self.add(enemy.position, intent.direction) == position:
+                    threats.append((f"{label}/melee", intent.power))
+            elif intent.kind == IntentType.CHARGE and intent.direction:
+                target = enemy.position
+                for _ in range(self.config.charger_range):
+                    target = self.add(target, intent.direction)
+                    if not self.in_bounds(target) or target in self.walls:
+                        break
+                    if target == position:
+                        threats.append((f"{label}/charge", intent.power))
+                        break
+                    if self.enemy_at(target):
+                        break
+        return tuple(threats)
+
     def observation(self) -> dict:
         return {
             "seed": self.seed,

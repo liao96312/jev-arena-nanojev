@@ -1,0 +1,22 @@
+{
+  "dataset": {
+    "records": 100,
+    "groups": 6,
+    "splits": {
+      "train": 70,
+      "dev": 10,
+      "calibration": 5,
+      "test": 10,
+      "ood": 5
+    },
+    "sha256": "cb038bdfe3ff71bb43879f3dd1316fa114ba94acfa95b1a2cf1695e2c4eb0bd8"
+  },
+  "token_audit": {
+    "questions": 100,
+    "p50": 174,
+    "p95": 184,
+    "max": 191,
+    "max_length": 192
+  },
+  "command": "python scripts/generate_dataset.py --records 100 --targets rollout --rollout-horizon 2 --output runs/v2_observation_smoke_compact.jsonl"
+}

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from .entities import DIRECTIONS
 from .env import ArenaEnv
 
 
@@ -16,7 +15,7 @@ def _nearest(origin: tuple[int, int], positions: list[tuple[int, int]]) -> str:
         return "none"
     target = min(positions, key=lambda p: abs(p[0] - origin[0]) + abs(p[1] - origin[1]))
     distance = abs(target[0] - origin[0]) + abs(target[1] - origin[1])
-    return f"{_direction(origin, target)} distance {distance}"
+    return f"{_direction(origin, target)}/{distance}"
 
 
 def encode_state(env: ArenaEnv) -> str:
@@ -27,32 +26,34 @@ def encode_state(env: ArenaEnv) -> str:
         if not env.in_bounds(target) or target in env.walls:
             value = "wall"
         elif enemy:
-            value = f"enemy(hp={enemy.hp})"
+            value = f"enemy{enemy.hp}"
         elif target in env.fires:
             value = "fire"
         else:
             value = "safe"
-        adjacent.append(f"{name[0].upper()} {value}")
+        adjacent.append(f"{name[0].upper()}:{value}")
     enemy_positions = [enemy.position for enemy in env.enemies]
-    tactical_enemies = sorted(env.enemies, key=lambda enemy: env._distance(env.player.position, enemy.position))[:6]
+    tactical_enemies = sorted(env.enemies, key=lambda enemy: env._distance(env.player.position, enemy.position))[:3]
     intents = "; ".join(
-        f"{enemy.enemy_type.value} {_direction(env.player.position, enemy.position)} distance "
-        f"{env._distance(env.player.position, enemy.position)}, hp={enemy.hp}, "
-        f"intent={enemy.intent.kind.value}{'_' + enemy.intent.direction if enemy.intent and enemy.intent.direction else ''}, "
-        f"countdown={enemy.intent.countdown}"
+        f"{enemy.enemy_type.value}:{_direction(env.player.position, enemy.position)}/"
+        f"{env._distance(env.player.position, enemy.position)}/hp{enemy.hp}/"
+        f"{enemy.intent.kind.value}{'_' + enemy.intent.direction if enemy.intent.direction else ''}"
+        f"@{enemy.intent.countdown}"
         for enemy in tactical_enemies if enemy.intent
     ) or "none"
-    memory = f"Last action {env.last_action}." if env.last_action else "No previous action."
+    memory = env.last_action or "none"
+    threats = env.imminent_threats()
+    threat_summary = ("; ".join(f"{label} dmg={power}" for label, power in threats)
+                      if threats else "none")
     return (
-        f"HP {env.player.hp}/100. Score {env.score}. "
-        f"Cooldowns: dash={env.player.cooldowns.get('dash', 0)}. "
-        f"{memory} "
-        f"Adjacent: {', '.join(adjacent)}. "
-        f"Nearest enemy {_nearest(env.player.position, enemy_positions)}. "
-        f"Nearest gem {_nearest(env.player.position, list(env.gems))}. "
-        f"Nearest medkit {_nearest(env.player.position, list(env.medkits))}. "
-        f"Enemy intents: {intents}. "
-        f"Enemies {len(env.enemies)}. Gems remaining {len(env.gems)}. "
-        f"Attack {'ready' if any(env.enemy_at(env.add(env.player.position, d)) for d in DIRECTIONS) else 'unavailable'}. "
-        f"Medkits carried {env.player.medkits}."
+        f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
+        f"cd={env.player.cooldowns.get('dash', 0)} last={memory}. "
+        f"Adj {','.join(adjacent)}. "
+        f"Near enemy={_nearest(env.player.position, enemy_positions)} "
+        f"gem={_nearest(env.player.position, list(env.gems))} "
+        f"kit={_nearest(env.player.position, list(env.medkits))} "
+        f"fire={_nearest(env.player.position, list(env.fires))}. "
+        f"Intent {intents}. "
+        f"Immediate threats: {threat_summary}. "
+        f"Count enemy={len(env.enemies)} gem={len(env.gems)} kit={env.player.medkits}."
     )

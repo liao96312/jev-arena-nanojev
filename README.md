@@ -24,6 +24,10 @@ RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。
 V2 复杂度基准中 RuleV2 平均分支因子为 7.317，79.92% 状态有至少 6 个动作，抽样状态的
 立即/两步必死率均为 0；完整指标见 [`baselines/v2/complexity_100x100.json`](baselines/v2/complexity_100x100.json)。
+Observation V2 会输出最近敌人的类型、Intent 与倒计时，并用环境规则标记即时威胁；
+Candidate V2 会在克隆环境中预演一回合，给出实际 HP/击杀/宝石变化和下一拍伤害。
+100 条 rollout 的候选路径 token 审计为 P50/P95/最大值 174/184/191，结果见
+[`baselines/v2/token_audit_100.json`](baselines/v2/token_audit_100.json)，可继续使用 `max_length=192`。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 

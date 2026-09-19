@@ -1,4 +1,4 @@
-from arena.entities import Action, IntentType
+from arena.entities import Action
 from arena.env import ArenaEnv
 
 
@@ -17,7 +17,7 @@ class RuleAgent:
                  .15 * enemy_damage + 4 * (simulation.kills - env.kills) +
                  20 * (simulation.environment_kills - env.environment_kills) +
                  4 * (simulation.gems_collected - env.gems_collected) -
-                 1.2 * self._imminent_damage(simulation) +
+                 1.2 * sum(power for _, power in simulation.imminent_threats()) +
                  .05 * len(simulation.legal_actions() if not simulation.done else ()))
         if simulation.player.hp <= 0:
             return -10_000
@@ -27,29 +27,3 @@ class RuleAgent:
         if simulation.player.position == env.previous_player_position:
             value -= .5
         return value
-
-    @staticmethod
-    def _imminent_damage(env: ArenaEnv) -> int:
-        damage = 0
-        for enemy in env.enemies:
-            intent = enemy.intent
-            if not intent or intent.countdown > 1:
-                continue
-            if intent.kind == IntentType.EXPLODE:
-                if env._distance(enemy.position, env.player.position) <= env.config.bomber_radius:
-                    damage += intent.power
-            elif intent.kind == IntentType.MELEE and intent.direction:
-                if env.add(enemy.position, intent.direction) == env.player.position:
-                    damage += intent.power
-            elif intent.kind == IntentType.CHARGE and intent.direction:
-                position = enemy.position
-                for _ in range(env.config.charger_range):
-                    position = env.add(position, intent.direction)
-                    if not env.in_bounds(position) or position in env.walls:
-                        break
-                    if position == env.player.position:
-                        damage += intent.power
-                        break
-                    if env.enemy_at(position):
-                        break
-        return damage

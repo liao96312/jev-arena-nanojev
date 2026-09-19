@@ -93,7 +93,7 @@ def generate(output: Path, records: int, per_seed: int = 50, targets: str = "one
                         "state": encode_state(env),
                         "questions": {"action": {
                             "type": "choice",
-                            "instructions": "Choose the best immediate action to maximize survival and long-term score.",
+                            "instructions": "Choose the best action for survival and score.",
                             "criteria": candidates,
                         }},
                         "gold_probs": {"action": probabilities},

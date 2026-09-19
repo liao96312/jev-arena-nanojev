@@ -54,7 +54,7 @@ class ArenaTests(unittest.TestCase):
         env.player.position = (2, 2)
         env.gems = {(4, 2)}
         from arena.candidates import build_candidates
-        self.assertIn("distance 2 to 1", build_candidates(env)["move_e"])
+        self.assertIn("gem 2->1", build_candidates(env)["move_e"])
 
     def test_agents_run_to_terminal(self):
         for agent in (RandomAgent(1), RuleAgent()):
@@ -177,7 +177,7 @@ class ArenaTests(unittest.TestCase):
                                    medkits=0))
         env.player.position = (1, 2)
         self.assertIn(Action.DASH_E, env.legal_actions())
-        self.assertIn("cooldown becomes 3", build_candidates(env)["dash_e"])
+        self.assertIn("cd=3", build_candidates(env)["dash_e"])
         env.step(Action.DASH_E)
         self.assertEqual((env.player.position, env.player.cooldowns["dash"]), ((3, 2), 3))
         self.assertNotIn(Action.DASH_E, env.legal_actions())
@@ -210,6 +210,19 @@ class ArenaTests(unittest.TestCase):
                        Enemy((1, 2), enemy_type=EnemyType.BOMBER)]
         env._plan_enemy_intents()
         self.assertEqual(RuleAgent().act(env), Action.DASH_S)
+
+    def test_observation_and_candidates_share_immediate_threats(self):
+        from arena.observation import encode_state
+
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0))
+        env.player.position = (2, 2)
+        bomber = Enemy((2, 1), enemy_type=EnemyType.BOMBER)
+        env.enemies = [bomber]
+        env._plan_enemy_intents()
+        bomber.intent.countdown = 1
+        self.assertIn("Immediate threats: bomber", encode_state(env))
+        self.assertIn("hp 100->80", build_candidates(env)["wait"])
 
 
 if __name__ == "__main__":

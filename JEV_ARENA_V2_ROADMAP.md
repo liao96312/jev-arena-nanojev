@@ -610,7 +610,7 @@ class Player:
 - [x] 每回合 cooldown tick
 - [x] Dash 合法性判断
 - [ ] EMP 范围计算
-- [ ] Candidate 描述剩余 CD
+- [x] Candidate 描述剩余 CD
 - [x] Observation 输出 CD
 - [x] Renderer 显示技能状态
 - [x] Dataset 支持技能动作
@@ -860,6 +860,10 @@ bomber explosion threatens current tile
 
 这样可以控制 token。
 
+已实现：状态输出玩家位置、Dash CD、四邻格、最近战术目标、最近 3 只敌人的
+类型/意图/倒计时，以及由环境规则统一计算的全部即时威胁。100 条 rollout 的
+候选路径 token 审计为 P50/P95/最大值 `174/184/191`，兼容 `max_length=192`。
+
 ---
 
 # 12. Candidate Description V2
@@ -899,6 +903,9 @@ Dash south two cells; escapes charger line; gem distance 3→5; cooldown becomes
 **只提供立即可以确定的信息，不要在 candidate 里写复杂策略判断。**
 
 否则规则系统会替 NanoJev 做完决策。
+
+已实现：每个合法动作会在克隆环境中执行一回合，只输出实际发生的 HP、宝石、
+击杀、环境击杀、终局变化和下一次 Intent 伤害；Dash 候选同时输出剩余 CD。
 
 ---
 
@@ -1748,7 +1755,7 @@ NanoJev 很快，但能力有限。
 
 ## P0 — 必做
 
-- [ ] 冻结 V1 baseline
+- [x] 冻结 V1 baseline
 - [x] Enemy Intent
 - [x] Charger
 - [x] Shove
@@ -1756,8 +1763,8 @@ NanoJev 很快，但能力有限。
 - [x] Bomber
 - [x] Friendly Fire
 - [x] Dash
-- [ ] Observation V2
-- [ ] Candidate V2
+- [x] Observation V2
+- [x] Candidate V2
 - [x] tactical scenario tests
 - [x] RuleAgentV2
 - [x] Complexity benchmark
@@ -1766,7 +1773,7 @@ NanoJev 很快，但能力有限。
 
 - [ ] Archer
 - [ ] EMP
-- [ ] Cooldown
+- [x] Cooldown
 - [ ] 2 AP
 - [ ] Barrel
 - [ ] Map solvability check
