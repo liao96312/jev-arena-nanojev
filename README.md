@@ -1,11 +1,42 @@
 # Jev Arena
 
+**语言：** 简体中文
+
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
+![Pygame](https://img.shields.io/badge/Pygame-Local%20GUI-2ea44f)
+![GPU](https://img.shields.io/badge/GPU-GTX%201660S-76B900?logo=nvidia&logoColor=white)
+![Mode](https://img.shields.io/badge/Mode-Local--first-6C63FF)
+
 完全本地的网格决策实验场。当前实现覆盖确定性 Arena、动态候选动作、
 Random/Rule/NanoJev Agent、Pygame、Replay、数据生成、统一 seed Benchmark 和 1660S head-only 训练。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 
-## 安装
+## 核心能力
+
+| 模块 | 能力 |
+| --- | --- |
+| Arena | 确定性网格环境、动态候选动作与多关卡难度 |
+| Agent | Random、Rule 与 NanoJev 三种决策实现 |
+| 交互 | 中文 Pygame 界面、速度调节与模型故障提示 |
+| 数据 | Replay、rollout 数据生成、校验、token 审计与 manifest |
+| 评测 | 统一 seed Benchmark、稳定性与延迟验收 |
+| 训练 | 面向 GTX 1660S 的 FP32 head-only 训练配置 |
+
+## 系统架构
+
+```mermaid
+flowchart LR
+  GUI["Pygame GUI"] --> Arena["Deterministic Arena"]
+  Arena --> Candidates["Candidate Actions"]
+  Candidates --> Rule["Rule Agent"]
+  Candidates --> NanoJev["NanoJev Service"]
+  Arena --> Replay["Replay / Dataset"]
+  Replay --> Train["Head-only Training"]
+  Train --> NanoJev
+```
+
+## 快速开始
 
 ```powershell
 git clone https://github.com/liao96312/jev-arena-nanojev.git
@@ -105,3 +136,19 @@ GPU 遥测（FP32 常驻显存 2.386 GB、网络模型调用 0）；
 正式 100k rollout 数据位于 `datasets/generated/arena_rollout_shaped_100k.jsonl`（147.5 MB）；
 [`manifest`](datasets/generated/arena_rollout_shaped_100k.manifest.json) 记录了 SHA-256、2,066 个
 seed group 和 70/10/5/10/5 split，且已通过 NanoJev `--validate-only`。
+
+## 目录结构
+
+```text
+arena/            网格环境与规则
+agents/           Random、Rule 与 NanoJev Agent
+nanojev_adapter/  NanoJev 请求与响应适配
+scripts/          游戏、评测、数据与训练脚本
+configs/          可复现训练配置
+datasets/         生成数据与 manifest
+tests/            环境和决策回归测试
+```
+
+## 当前状态
+
+本项目是可运行的本地实验场。默认 checkpoint 已通过连续 10 局、1000 次真实决策稳定性验收；100k rollout 数据与 1660S 训练链路可复现，模型质量仍在迭代。
