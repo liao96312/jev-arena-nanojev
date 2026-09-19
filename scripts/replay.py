@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arena import ArenaConfig, ArenaEnv
+from arena.entities import PlayerLoadout
 
 
 def canonical(value):
@@ -20,7 +21,8 @@ def verify(path: Path) -> dict:
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not rows:
         raise ValueError("replay is empty")
-    env = ArenaEnv(ArenaConfig(**rows[0].get("config", {})))
+    env = ArenaEnv(ArenaConfig(**rows[0].get("config", {})),
+                   PlayerLoadout(*rows[0].get("initial_loadout", (False, False, 0, 0))))
     env.reset(rows[0]["seed"])
     for index, row in enumerate(rows):
         if row["seed"] != env.seed or row["tick"] != env.tick:

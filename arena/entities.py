@@ -19,6 +19,14 @@ class Action(StrEnum):
     DASH_S = "dash_s"
     DASH_W = "dash_w"
     DASH_E = "dash_e"
+    SHOOT_BOW_N = "shoot_bow_n"
+    SHOOT_BOW_S = "shoot_bow_s"
+    SHOOT_BOW_W = "shoot_bow_w"
+    SHOOT_BOW_E = "shoot_bow_e"
+    SHOOT_PISTOL_N = "shoot_pistol_n"
+    SHOOT_PISTOL_S = "shoot_pistol_s"
+    SHOOT_PISTOL_W = "shoot_pistol_w"
+    SHOOT_PISTOL_E = "shoot_pistol_e"
     HEAL = "heal"
     WAIT = "wait"
 
@@ -48,11 +56,20 @@ DIRECTIONS = {
 
 
 @dataclass
+class PlayerLoadout:
+    bow: bool = False
+    pistol: bool = False
+    arrows: int = 0
+    energy: int = 0
+
+
+@dataclass
 class Player:
     position: tuple[int, int]
     hp: int = 100
     medkits: int = 0
     cooldowns: dict[str, int] = field(default_factory=lambda: {"dash": 0})
+    loadout: PlayerLoadout = field(default_factory=PlayerLoadout)
 
 
 @dataclass

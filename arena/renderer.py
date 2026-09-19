@@ -10,6 +10,8 @@ AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev"}
 ACTION_NAMES = {
     "move_n": "向上移动", "move_s": "向下移动", "move_w": "向左移动", "move_e": "向右移动",
     "attack_n": "向上攻击", "attack_s": "向下攻击", "attack_w": "向左攻击", "attack_e": "向右攻击",
+    "shoot_bow_n": "向上射箭", "shoot_bow_s": "向下射箭", "shoot_bow_w": "向左射箭", "shoot_bow_e": "向右射箭",
+    "shoot_pistol_n": "向上开枪", "shoot_pistol_s": "向下开枪", "shoot_pistol_w": "向左开枪", "shoot_pistol_e": "向右开枪",
     "heal": "使用药包", "wait": "原地等待", "-": "等待决策",
 }
 REASON_NAMES = {
@@ -64,6 +66,12 @@ class ArenaRenderer:
             self._sprite(position, "gem")
         for position in env.medkits:
             self._sprite(position, "medkit")
+        for positions, sprite in ((env.bow_pickups, "item_bow"),
+                                  (env.pistol_pickups, "item_pulse_pistol"),
+                                  (env.arrow_bundles, "ammo_arrows"),
+                                  (env.energy_cells, "ammo_energy_cell")):
+            for position in positions:
+                self._sprite(position, sprite)
         for enemy in env.enemies:
             self._intent_line(env, enemy)
         for enemy in env.enemies:
@@ -84,6 +92,10 @@ class ArenaRenderer:
                 lunge = 0.22 * math.sin(progress * math.pi)
                 player_position = (player_position[0] + dx * lunge, player_position[1] + dy * lunge)
                 attack_effect = (env.player.position, (dx, dy), progress)
+            elif animated_action.startswith("shoot_"):
+                dx, dy = {"n": (0, -1), "s": (0, 1), "w": (-1, 0), "e": (1, 0)}[animated_action[-1]]
+                self._ranged_effect(env.player.position, (dx, dy), progress,
+                                    animated_action.startswith("shoot_bow_"))
         self._sprite(player_position, "player")
         if attack_effect:
             self._attack_effect(*attack_effect)
@@ -103,18 +115,22 @@ class ArenaRenderer:
         if selection_reason:
             self._text(f"决策依据：{REASON_NAMES.get(selection_reason, selection_reason)}", left, 152,
                        colors["muted"], small=True)
-        self._text(f"难度：敌人 {env.config.enemies}  火焰 {env.config.fires}  怪速 1/{env.config.enemy_move_interval}",
+        self._text(f"难度：敌人 {env.config.enemies}  火焰 {env.config.fires}  追{env.config.enemy_move_interval}/远爆{env.config.enemy_move_interval + 1}",
                    left, 174, colors["muted"], small=True)
         dash_cd = env.player.cooldowns.get("dash", 0)
         self._text(f"技能：冲刺 {'就绪' if not dash_cd else f'冷却 {dash_cd}'}", left, 196,
                    colors["selected"] if not dash_cd else colors["muted"], small=True)
-        y = 225
+        loadout = env.player.loadout
+        self._text(f"武器：弓 {'未获得' if not loadout.bow else f'{loadout.arrows} 箭'}  "
+                   f"手枪 {'未获得' if not loadout.pistol else f'{loadout.energy} 发'}",
+                   left, 218, colors["muted"], small=True)
+        y = 245
         for name, probability in sorted(probabilities.items(), key=lambda item: item[1], reverse=True):
             self._text(f"{ACTION_NAMES.get(name, name)}  {probability:>6.1%}", left, y,
                        colors["text"], small=True)
             pg.draw.rect(self.screen, colors["grid"], (left, y + 20, 290, 8))
             pg.draw.rect(self.screen, colors["bar"], (left, y + 20, int(290 * probability), 8))
-            y += 45
+            y += 38
 
         footer_y = self.map_height + 15
         status = (f"生命 {env.player.hp:3}/100   总分 {score_offset + env.score:3}   宝石 {env.gems_collected}   "
@@ -129,7 +145,8 @@ class ArenaRenderer:
         root = Path(__file__).resolve().parents[1] / "assets" / "sprites"
         sprites = {}
         for name in ("player", "enemy_chaser", "enemy_charger", "enemy_bomber", "enemy_archer",
-                     "gem", "fire", "medkit", "wall"):
+                     "gem", "fire", "medkit", "wall", "item_bow", "item_pulse_pistol",
+                     "ammo_arrows", "ammo_energy_cell"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -162,6 +179,14 @@ class ArenaRenderer:
         width = self.CELL - 8
         self.pg.draw.rect(self.screen, (38, 18, 24), (x, y, width, 3))
         self.pg.draw.rect(self.screen, self.COLORS["enemy"], (x, y, round(width * hp / maximum), 3))
+
+    def _ranged_effect(self, position, direction, progress: float, bow: bool) -> None:
+        start = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + self.CELL // 2)
+        distance = self.CELL * 5 * min(1, progress * 2)
+        end = (start[0] + direction[0] * distance, start[1] + direction[1] * distance)
+        color = (110, 255, 125) if bow else (80, 220, 255)
+        self.pg.draw.line(self.screen, color, start, end, 3 if bow else 5)
+        self.pg.draw.circle(self.screen, color, (round(end[0]), round(end[1])), 4)
 
     def _intent(self, position, intent) -> None:
         if not intent:
@@ -204,12 +229,18 @@ class ArenaRenderer:
         for event in events:
             if event == "gem": labels.append("获得宝石 +10")
             elif event == "medkit": labels.append("拾取药包 +3")
+            elif event == "pickup_bow": labels.append("拾取复合弓：箭矢 +3")
+            elif event == "pickup_pistol": labels.append("拾取脉冲手枪：能量 +6")
+            elif event == "pickup_arrows": labels.append("拾取箭束 +3")
+            elif event == "pickup_energy": labels.append("拾取能量弹匣 +6")
             elif event == "kill": labels.append("击败敌人 +20")
             elif event == "environment_kill": labels.append("环境击杀！")
             elif event.startswith("shove:"): labels.append("推动敌人")
             elif event.startswith("enemy_collision:"): labels.append("敌人碰撞")
             elif event == "bomber_explode": labels.append("炸弹怪爆炸！")
             elif event.startswith("archer_shot:"): labels.append("射手放箭！")
+            elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
+            elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("dash:"): labels.append("冲刺！")
             elif event == "heal": labels.append("恢复生命")
             elif event == "level_complete": labels.append("关卡完成！准备进入下一关")

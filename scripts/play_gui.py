@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agents import NanoJevAgent, RandomAgent, RuleAgent
 from arena import ArenaEnv, campaign_config
+from arena.campaign_save import CampaignSave, load_campaign, save_campaign
 from arena.renderer import ArenaRenderer
 
 
@@ -27,8 +28,10 @@ def main() -> None:
     parser.add_argument("--decision-ms", type=int, default=280)
     args = parser.parse_args()
 
-    level, campaign_score = 1, 0
-    env, renderer = ArenaEnv(campaign_config(level)), ArenaRenderer()
+    save_path = Path(__file__).resolve().parents[1] / "saves" / "campaign.json"
+    saved = load_campaign(save_path)
+    level, campaign_score = saved.level, saved.score
+    env, renderer = ArenaEnv(campaign_config(level), saved.loadout), ArenaRenderer()
     env.reset(args.seed)
     agent_name, agent = args.agent, make_agent(args.agent, args.seed)
     decision_ms = max(80, args.decision_ms)
@@ -75,8 +78,9 @@ def main() -> None:
             if level_advance_at and now >= level_advance_at:
                 campaign_score += env.score
                 level += 1
-                env = ArenaEnv(campaign_config(level))
+                env = ArenaEnv(campaign_config(level), env.player.loadout)
                 env.reset(args.seed + level - 1)
+                save_campaign(save_path, CampaignSave(level, campaign_score, env.player.loadout))
                 agent = make_agent(agent_name, args.seed + level - 1)
                 generation += 1
                 pending, animation, level_advance_at = None, None, 0
@@ -99,6 +103,7 @@ def main() -> None:
                     old_enemies = {id(enemy): enemy.position for enemy in env.enemies}
                     action_name = action.value
                     result = env.step(action)
+                    save_campaign(save_path, CampaignSave(level, campaign_score, env.player.loadout))
                     animation = (old_position, old_enemies, action_name, result.events, now)
                     if "level_complete" in result.events:
                         level_advance_at = now + 1200

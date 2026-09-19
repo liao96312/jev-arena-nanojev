@@ -14,6 +14,10 @@ def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
         parts.append(f"kill+{simulation.kills - env.kills}")
     if simulation.environment_kills != env.environment_kills:
         parts.append(f"env_kill+{simulation.environment_kills - env.environment_kills}")
+    if simulation.player.loadout.arrows != env.player.loadout.arrows:
+        parts.append(f"arrows {env.player.loadout.arrows}->{simulation.player.loadout.arrows}")
+    if simulation.player.loadout.energy != env.player.loadout.energy:
+        parts.append(f"energy {env.player.loadout.energy}->{simulation.player.loadout.energy}")
     threats = simulation.imminent_threats()
     if threats:
         parts.append(f"next_damage={sum(power for _, power in threats)}")
@@ -40,6 +44,14 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
         Action.DASH_S: "Dash S x2",
         Action.DASH_W: "Dash W x2",
         Action.DASH_E: "Dash E x2",
+        Action.SHOOT_BOW_N: "Bow N",
+        Action.SHOOT_BOW_S: "Bow S",
+        Action.SHOOT_BOW_W: "Bow W",
+        Action.SHOOT_BOW_E: "Bow E",
+        Action.SHOOT_PISTOL_N: "Pistol N",
+        Action.SHOOT_PISTOL_S: "Pistol S",
+        Action.SHOOT_PISTOL_W: "Pistol W",
+        Action.SHOOT_PISTOL_E: "Pistol E",
         Action.HEAL: "Use medkit",
         Action.WAIT: "Wait",
     }
@@ -85,6 +97,14 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                 before = min(env._distance(env.player.position, gem) for gem in env.gems)
                 after = min(env._distance(target, gem) for gem in env.gems)
                 description += f"; gem {before}->{after}"
+        elif action.value.startswith("shoot_"):
+            weapon = "bow" if action.value.startswith("shoot_bow_") else "pistol"
+            range_ = env.config.bow_range if weapon == "bow" else env.config.pistol_range
+            enemy, distance = env._ray_target(env.player.position, action.value[-1], range_)
+            damage = env.config.bow_damage if weapon == "bow" else env.config.pistol_damage
+            description += f"; {enemy.enemy_type.value}/{distance} hp {enemy.hp}->{max(0, enemy.hp - damage)}"
+            if weapon == "bow" and enemy.hp > damage:
+                description += "; push=1"
         consequence = _immediate_consequence(env, action)
         candidates[action.value] = description + ("; immediate: " + consequence if consequence else "")
     return candidates

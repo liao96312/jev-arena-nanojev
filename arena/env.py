@@ -4,7 +4,7 @@ import copy
 import random
 from dataclasses import dataclass
 
-from .entities import DIRECTIONS, Action, Enemy, EnemyType, Intent, IntentType, Player
+from .entities import DIRECTIONS, Action, Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,10 @@ class ArenaConfig:
     gems: int = 6
     fires: int = 10
     medkits: int = 2
+    bow_pickups: int = 0
+    pistol_pickups: int = 0
+    arrow_bundles: int = 0
+    energy_cells: int = 0
     enemy_damage: int = 5
     fire_damage: int = 10
     attack_damage: int = 20
@@ -32,6 +36,10 @@ class ArenaConfig:
     bomber_radius: int = 1
     archer_damage: int = 12
     archer_countdown: int = 2
+    bow_damage: int = 15
+    bow_range: int = 6
+    pistol_damage: int = 12
+    pistol_range: int = 8
     dash_cooldown: int = 3
     finish_on_all_gems: bool = False
 
@@ -46,6 +54,10 @@ def campaign_config(level: int) -> ArenaConfig:
         gems=min(8, 2 + (level + 1) // 2),
         fires=min(24, 4 + level * 2),
         medkits=max(1, 3 - level // 3),
+        bow_pickups=1 if level == 1 else 0,
+        pistol_pickups=1 if level == 3 else 0,
+        arrow_bundles=1 if level >= 2 else 0,
+        energy_cells=1 if level >= 4 else 0,
         enemy_damage=min(12, 4 + (level - 1) // 2),
         fire_damage=min(18, 8 + level),
         enemy_move_interval=2,
@@ -64,8 +76,9 @@ class StepResult:
 
 
 class ArenaEnv:
-    def __init__(self, config: ArenaConfig | None = None):
+    def __init__(self, config: ArenaConfig | None = None, loadout: PlayerLoadout | None = None):
         self.config = config or ArenaConfig()
+        self.loadout = copy.deepcopy(loadout or PlayerLoadout())
         self.reset(0)
 
     def reset(self, seed: int = 0) -> dict:
@@ -84,12 +97,14 @@ class ArenaEnv:
         self.done = False
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
-        needed = 1 + self.config.walls + self.config.enemies + self.config.gems + self.config.fires + self.config.medkits
+        needed = (1 + self.config.walls + self.config.enemies + self.config.gems + self.config.fires +
+                  self.config.medkits + self.config.bow_pickups + self.config.pistol_pickups +
+                  self.config.arrow_bundles + self.config.energy_cells)
         if needed > len(cells):
             raise ValueError("map contains more entities than cells")
 
         take = iter(cells)
-        self.player = Player(next(take))
+        self.player = Player(next(take), loadout=self.loadout)
         self.walls = {next(take) for _ in range(self.config.walls)}
         self.enemies = []
         for _ in range(self.config.enemies):
@@ -104,6 +119,11 @@ class ArenaEnv:
         self.gems = {next(take) for _ in range(self.config.gems)}
         self.fires = {next(take) for _ in range(self.config.fires)}
         self.medkits = {next(take) for _ in range(self.config.medkits)}
+        self.bow_pickups = {next(take) for _ in range(self.config.bow_pickups)}
+        self.pistol_pickups = {next(take) for _ in range(self.config.pistol_pickups)}
+        self.arrow_bundles = {next(take) for _ in range(self.config.arrow_bundles)}
+        self.energy_cells = {next(take) for _ in range(self.config.energy_cells)}
+        self._ensure_pickups_reachable()
         self._plan_enemy_intents()
         return self.observation()
 
@@ -121,8 +141,30 @@ class ArenaEnv:
     def enemy_at(self, position: tuple[int, int]) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
+    def _ensure_pickups_reachable(self) -> None:
+        reachable = {self.player.position}
+        frontier = [self.player.position]
+        while frontier:
+            position = frontier.pop()
+            for direction in DIRECTIONS:
+                target = self.add(position, direction)
+                if self.in_bounds(target) and target not in self.walls and target not in reachable:
+                    reachable.add(target)
+                    frontier.append(target)
+        pickup_sets = (self.bow_pickups, self.pistol_pickups, self.arrow_bundles, self.energy_cells)
+        occupied = ({self.player.position} | self.walls | self.gems | self.fires | self.medkits |
+                    {enemy.position for enemy in self.enemies} | set().union(*pickup_sets))
+        free = sorted(reachable - occupied, key=lambda p: self._distance(self.player.position, p))
+        for pickups in pickup_sets:
+            for position in list(pickups - reachable):
+                if not free:
+                    return
+                pickups.remove(position)
+                pickups.add(free.pop(0))
+
     def legal_actions(self) -> list[Action]:
         actions: list[Action] = []
+        ranged: list[tuple[int, Action]] = []
         for direction in DIRECTIONS:
             target = self.add(self.player.position, direction)
             if self.in_bounds(target) and target not in self.walls and not self.enemy_at(target):
@@ -136,8 +178,17 @@ class ArenaEnv:
                     self.in_bounds(destination) and target not in self.walls and destination not in self.walls and
                     not self.enemy_at(target) and not self.enemy_at(destination)):
                 actions.append(Action(f"dash_{direction}"))
+            bow_target = self._ray_target(self.player.position, direction, self.config.bow_range)
+            pistol_target = self._ray_target(self.player.position, direction, self.config.pistol_range)
+            if self.player.loadout.bow and self.player.loadout.arrows and bow_target and bow_target[1] > 1:
+                ranged.append((bow_target[1], Action(f"shoot_bow_{direction}")))
+            if (self.player.loadout.pistol and self.player.loadout.energy and pistol_target and
+                    pistol_target[1] > 1):
+                ranged.append((pistol_target[1], Action(f"shoot_pistol_{direction}")))
         if self.player.medkits and self.player.hp < 100:
             actions.append(Action.HEAL)
+        ranged.sort(key=lambda item: item[0])
+        actions.extend(action for _, action in ranged[:max(0, 11 - len(actions))])
         actions.append(Action.WAIT)
         return actions
 
@@ -179,6 +230,9 @@ class ArenaEnv:
             enemy = self.enemy_at(self.add(self.player.position, direction))
             assert enemy is not None
             reward += self._push_entity(enemy, direction, events)
+        elif action.value.startswith("shoot_"):
+            weapon = "bow" if action.value.startswith("shoot_bow_") else "pistol"
+            reward += self._player_shoot(weapon, action.value[-1], events)
         elif action == Action.HEAL:
             self.player.medkits -= 1
             self.player.hp = min(100, self.player.hp + self.config.heal_amount)
@@ -222,6 +276,24 @@ class ArenaEnv:
             self.score += 3
             reward += 3
             events.append("medkit")
+        if self.player.position in self.bow_pickups:
+            self.bow_pickups.remove(self.player.position)
+            self.player.loadout.bow = True
+            self.player.loadout.arrows = min(12, self.player.loadout.arrows + 3)
+            events.append("pickup_bow")
+        if self.player.position in self.pistol_pickups:
+            self.pistol_pickups.remove(self.player.position)
+            self.player.loadout.pistol = True
+            self.player.loadout.energy = min(24, self.player.loadout.energy + 6)
+            events.append("pickup_pistol")
+        if self.player.position in self.arrow_bundles:
+            self.arrow_bundles.remove(self.player.position)
+            self.player.loadout.arrows = min(12, self.player.loadout.arrows + 3)
+            events.append("pickup_arrows")
+        if self.player.position in self.energy_cells:
+            self.energy_cells.remove(self.player.position)
+            self.player.loadout.energy = min(24, self.player.loadout.energy + 6)
+            events.append("pickup_energy")
         return reward
 
     def _damage_entity(self, entity: Player | Enemy, amount: int, events: list[str], source: str) -> float:
@@ -237,11 +309,39 @@ class ArenaEnv:
         self.enemies.remove(entity)
         self.kills += 1
         self.score += 20
-        if source != "attack":
+        if source not in ("attack", "bow", "pistol"):
             self.environment_kills += 1
             events.append("environment_kill")
         events.append("kill")
-        return 20.0 if source == "attack" else 10.0
+        return 20.0 if source in ("attack", "bow", "pistol") else 10.0
+
+    def _ray_target(self, origin: tuple[int, int], direction: str, range_: int) -> tuple[Enemy, int] | None:
+        target = origin
+        for distance in range(1, range_ + 1):
+            target = self.add(target, direction)
+            if not self.in_bounds(target) or target in self.walls:
+                return None
+            enemy = self.enemy_at(target)
+            if enemy:
+                return enemy, distance
+        return None
+
+    def _player_shoot(self, weapon: str, direction: str, events: list[str]) -> float:
+        loadout = self.player.loadout
+        if weapon == "bow":
+            loadout.arrows -= 1
+            damage, range_ = self.config.bow_damage, self.config.bow_range
+        else:
+            loadout.energy -= 1
+            damage, range_ = self.config.pistol_damage, self.config.pistol_range
+        target = self._ray_target(self.player.position, direction, range_)
+        assert target is not None
+        enemy, _ = target
+        events.append(f"shoot_{weapon}:{direction}")
+        reward = self._damage_entity(enemy, damage, events, weapon)
+        if weapon == "bow" and enemy in self.enemies:
+            reward += self._push_entity(enemy, direction, events)
+        return reward
 
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
         destination = self.add(enemy.position, direction)
@@ -272,7 +372,7 @@ class ArenaEnv:
             if distance == 1:
                 direction = next(name for name, delta in DIRECTIONS.items()
                                  if self.add(enemy.position, name) == self.player.position)
-                enemy.intent = Intent(IntentType.MELEE, direction, self.config.enemy_move_interval,
+                enemy.intent = Intent(IntentType.MELEE, direction, self._enemy_interval(enemy),
                                       self.config.enemy_damage)
                 continue
             dx = self.player.position[0] - enemy.position[0]
@@ -296,7 +396,10 @@ class ArenaEnv:
                         self._distance(target, self.player.position) < distance):
                     directions.append(direction)
             enemy.intent = Intent(IntentType.MOVE, self.rng.choice(directions),
-                                  self.config.enemy_move_interval) if directions else Intent(IntentType.WAIT)
+                                  self._enemy_interval(enemy)) if directions else Intent(IntentType.WAIT)
+
+    def _enemy_interval(self, enemy: Enemy) -> int:
+        return self.config.enemy_move_interval + (enemy.enemy_type != EnemyType.CHASER)
 
     def _resolve_enemy_intents(self, events: list[str]) -> float:
         reward = 0.0
@@ -465,6 +568,8 @@ class ArenaEnv:
             "previous_position": self.previous_player_position,
             "last_action": self.last_action,
             "medkits_carried": self.player.medkits,
+            "loadout": (self.player.loadout.bow, self.player.loadout.pistol,
+                        self.player.loadout.arrows, self.player.loadout.energy),
             "cooldowns": tuple(sorted(self.player.cooldowns.items())),
             "walls": tuple(sorted(self.walls)),
             "enemies": tuple((enemy.position, enemy.hp) for enemy in self.enemies),
@@ -477,6 +582,10 @@ class ArenaEnv:
             "gems": tuple(sorted(self.gems)),
             "fires": tuple(sorted(self.fires)),
             "medkits": tuple(sorted(self.medkits)),
+            "bow_pickups": tuple(sorted(self.bow_pickups)),
+            "pistol_pickups": tuple(sorted(self.pistol_pickups)),
+            "arrow_bundles": tuple(sorted(self.arrow_bundles)),
+            "energy_cells": tuple(sorted(self.energy_cells)),
             "gems_collected": self.gems_collected,
             "kills": self.kills,
             "environment_kills": self.environment_kills,

@@ -20,6 +20,9 @@ Bomber 使用独立紫色贴图并显示两回合爆炸倒计时，爆炸会同�
 Chaser、Charger、Bomber、Archer 均使用 imagegen 生成的独立透明贴图。Archer 会提前两回合
 显示粉色射线并沿直线射击，玩家可以横向躲避，挡在射线上的其它敌人会先受到伤害。
 玩家在路径畅通时可向四个方向 Dash 两格，技能冷却 3 回合；Observation、动态候选与 GUI 会显示技能状态。
+玩家可拾取复合弓和脉冲手枪：弓射程 6、伤害 15 并击退，手枪射程 8、伤害 12；
+武器与有限弹药跨关并保存到 `saves/campaign.json`，箭束和能量弹匣可补充弹药。
+Chaser 按基础节奏追击，Charger 普通移动较慢但冲锋更快，Bomber 与 Archer 普通移动再慢一拍。
 RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。

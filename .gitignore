@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 runs/
 replays/*.jsonl
+saves/*.json
 datasets/generated/*.jsonl
 checkpoints/
 third_party/NanoJev/

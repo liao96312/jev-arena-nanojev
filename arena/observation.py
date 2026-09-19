@@ -45,6 +45,13 @@ def encode_state(env: ArenaEnv) -> str:
     threats = env.imminent_threats()
     threat_summary = ("; ".join(f"{label} dmg={power}" for label, power in threats)
                       if threats else "none")
+    pickups = (list(env.bow_pickups) + list(env.pistol_pickups) + list(env.arrow_bundles) +
+               list(env.energy_cells))
+    inventory = ""
+    if env.player.loadout.bow or env.player.loadout.pistol or pickups:
+        inventory = (f" Inv bow={env.player.loadout.arrows if env.player.loadout.bow else 'no'} "
+                     f"pistol={env.player.loadout.energy if env.player.loadout.pistol else 'no'} "
+                     f"pickup={_nearest(env.player.position, pickups)}.")
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
         f"cd={env.player.cooldowns.get('dash', 0)} last={memory}. "
@@ -56,4 +63,5 @@ def encode_state(env: ArenaEnv) -> str:
         f"Intent {intents}. "
         f"Immediate threats: {threat_summary}. "
         f"Count enemy={len(env.enemies)} gem={len(env.gems)} kit={env.player.medkits}."
+        f"{inventory}"
     )

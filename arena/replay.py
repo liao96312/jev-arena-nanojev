@@ -17,6 +17,7 @@ class ReplayLogger:
         record = {
             "seed": env.seed,
             "config": asdict(env.config),
+            "initial_loadout": state["loadout"],
             "tick": state["tick"],
             "state": state,
             "next_state": env.observation(),
