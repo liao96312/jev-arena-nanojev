@@ -3,7 +3,7 @@ import unittest
 from agents import RandomAgent, RuleAgent
 from arena import ArenaConfig, ArenaEnv, campaign_config
 from arena.candidates import build_candidates
-from arena.entities import Action, Enemy
+from arena.entities import Action, Enemy, IntentType
 
 
 class ArenaTests(unittest.TestCase):
@@ -77,17 +77,34 @@ class ArenaTests(unittest.TestCase):
         self.assertTrue(result.done)
         self.assertIn("level_complete", result.events)
 
-    def test_slow_enemy_damages_on_contact(self):
+    def test_enemy_intent_is_telegraphed_and_deterministic(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
                                    medkits=0, enemy_move_interval=2))
         env.player.position = (2, 2)
         env.enemies = [Enemy((2, 4))]
+        env._plan_enemy_intents()
+        self.assertEqual((env.enemies[0].intent.kind, env.enemies[0].intent.direction,
+                          env.enemies[0].intent.countdown), (IntentType.MOVE, "n", 2))
         env.step(Action.WAIT)
         self.assertEqual(env.enemies[0].position, (2, 4))
-        result = env.step(Action.WAIT)
+        env.step(Action.WAIT)
         self.assertEqual(env.enemies[0].position, (2, 3))
+        self.assertEqual(env.enemies[0].intent.kind, IntentType.MELEE)
+        env.step(Action.WAIT)
+        result = env.step(Action.WAIT)
         self.assertEqual(env.player.hp, 95)
         self.assertIn("damage:enemy:5", result.events)
+
+    def test_player_can_dodge_visible_melee_intent(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0))
+        env.player.position = (2, 2)
+        env.enemies = [Enemy((3, 2))]
+        env._plan_enemy_intents()
+        self.assertEqual(env.enemies[0].intent.kind, IntentType.MELEE)
+        result = env.step(Action.MOVE_N)
+        self.assertEqual(env.player.hp, 100)
+        self.assertNotIn("enemy_melee", result.events)
 
 
 if __name__ == "__main__":

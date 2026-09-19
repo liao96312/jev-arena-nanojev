@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 from arena.env import ArenaEnv
+from arena.entities import IntentType
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev"}
 ACTION_NAMES = {
@@ -69,6 +70,7 @@ class ArenaRenderer:
                         previous[1] + (enemy.position[1] - previous[1]) * eased)
             self._sprite(position, "enemy")
             self._health_bar(position, enemy.hp, 30)
+            self._intent(enemy.position, enemy.intent)
         player_position = env.player.position
         attack_effect = None
         if animation:
@@ -154,6 +156,16 @@ class ArenaRenderer:
         width = self.CELL - 8
         self.pg.draw.rect(self.screen, (38, 18, 24), (x, y, width, 3))
         self.pg.draw.rect(self.screen, self.COLORS["enemy"], (x, y, round(width * hp / maximum), 3))
+
+    def _intent(self, position, intent) -> None:
+        if not intent:
+            return
+        arrows = {"n": "↑", "s": "↓", "w": "←", "e": "→"}
+        icon = "⚔" if intent.kind == IntentType.MELEE else arrows.get(intent.direction, "·")
+        color = (255, 115, 115) if intent.kind == IntentType.MELEE else (105, 210, 255)
+        label = self.small.render(f"{icon}{intent.countdown}", True, color)
+        center = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + 4)
+        self.screen.blit(label, label.get_rect(center=center))
 
     def _event_feedback(self, events: tuple[str, ...]) -> None:
         labels = []

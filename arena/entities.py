@@ -15,6 +15,22 @@ class Action(StrEnum):
     WAIT = "wait"
 
 
+class EnemyType(StrEnum):
+    CHASER = "chaser"
+    CHARGER = "charger"
+    ARCHER = "archer"
+    BOMBER = "bomber"
+
+
+class IntentType(StrEnum):
+    MOVE = "move"
+    MELEE = "melee"
+    CHARGE = "charge"
+    SHOOT = "shoot"
+    EXPLODE = "explode"
+    WAIT = "wait"
+
+
 DIRECTIONS = {
     "n": (0, -1),
     "s": (0, 1),
@@ -31,6 +47,17 @@ class Player:
 
 
 @dataclass
+class Intent:
+    kind: IntentType
+    direction: str | None = None
+    countdown: int = 1
+    power: int = 0
+
+
+@dataclass
 class Enemy:
     position: tuple[int, int]
     hp: int = 30
+    enemy_type: EnemyType = EnemyType.CHASER
+    intent: Intent | None = None
+    stunned: int = 0

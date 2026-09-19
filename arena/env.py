@@ -4,7 +4,7 @@ import copy
 import random
 from dataclasses import dataclass
 
-from .entities import DIRECTIONS, Action, Enemy, Player
+from .entities import DIRECTIONS, Action, Enemy, Intent, IntentType, Player
 
 
 @dataclass(frozen=True)
@@ -77,6 +77,7 @@ class ArenaEnv:
         self.gems = {next(take) for _ in range(self.config.gems)}
         self.fires = {next(take) for _ in range(self.config.fires)}
         self.medkits = {next(take) for _ in range(self.config.medkits)}
+        self._plan_enemy_intents()
         return self.observation()
 
     def clone(self) -> ArenaEnv:
@@ -138,7 +139,7 @@ class ArenaEnv:
             events.append("heal")
 
         if self.player.hp > 0:
-            reward += self._move_enemies(events)
+            reward += self._resolve_enemy_intents(events)
         self.previous_player_position = origin
         self.last_action = action.value
         self.tick += 1
@@ -180,29 +181,58 @@ class ArenaEnv:
         events.append(f"damage:{source}:{actual}")
         return -0.1 * actual
 
-    def _move_enemies(self, events: list[str]) -> float:
-        reward = 0.0
+    def _plan_enemy_intents(self, enemies: list[Enemy] | None = None) -> None:
         occupied = {enemy.position for enemy in self.enemies}
-        for enemy in self.enemies:
+        for enemy in enemies or self.enemies:
+            if enemy.stunned:
+                enemy.intent = Intent(IntentType.WAIT, countdown=1)
+                continue
             distance = self._distance(enemy.position, self.player.position)
             if distance == 1:
-                reward += self._damage(self.config.enemy_damage, events, "enemy")
+                direction = next(name for name, delta in DIRECTIONS.items()
+                                 if self.add(enemy.position, name) == self.player.position)
+                enemy.intent = Intent(IntentType.MELEE, direction, self.config.enemy_move_interval,
+                                      self.config.enemy_damage)
                 continue
-            if (self.tick + 1) % self.config.enemy_move_interval:
-                continue
-            options = []
+            directions = []
             for direction in DIRECTIONS:
                 target = self.add(enemy.position, direction)
-                if (self.in_bounds(target) and target not in self.walls and
-                        target not in occupied and target != self.player.position):
-                    options.append(target)
-            closer = [p for p in options if self._distance(p, self.player.position) < distance]
-            if closer:
-                occupied.remove(enemy.position)
-                enemy.position = self.rng.choice(closer)
-                occupied.add(enemy.position)
-                if self._distance(enemy.position, self.player.position) == 1:
-                    reward += self._damage(self.config.enemy_damage, events, "enemy")
+                if (self.in_bounds(target) and target not in self.walls and target not in occupied and
+                        target != self.player.position and
+                        self._distance(target, self.player.position) < distance):
+                    directions.append(direction)
+            enemy.intent = Intent(IntentType.MOVE, self.rng.choice(directions),
+                                  self.config.enemy_move_interval) if directions else Intent(IntentType.WAIT)
+
+    def _resolve_enemy_intents(self, events: list[str]) -> float:
+        reward = 0.0
+        occupied = {enemy.position for enemy in self.enemies}
+        resolved: list[Enemy] = []
+        for enemy in self.enemies:
+            intent = enemy.intent
+            if intent is None:
+                resolved.append(enemy)
+                continue
+            intent.countdown -= 1
+            if intent.countdown > 0:
+                continue
+            if enemy.stunned:
+                enemy.stunned -= 1
+            elif intent.kind == IntentType.MELEE and intent.direction:
+                if self.add(enemy.position, intent.direction) == self.player.position:
+                    reward += self._damage(intent.power, events, "enemy")
+                    events.append("enemy_melee")
+            elif intent.kind == IntentType.MOVE and intent.direction:
+                target = self.add(enemy.position, intent.direction)
+                if (self.in_bounds(target) and target not in self.walls and target not in occupied and
+                        target != self.player.position):
+                    occupied.remove(enemy.position)
+                    enemy.position = target
+                    occupied.add(target)
+                    events.append("enemy_move")
+            resolved.append(enemy)
+        if resolved:
+            self._plan_enemy_intents(resolved)
         return reward
 
     @staticmethod
@@ -221,6 +251,12 @@ class ArenaEnv:
             "medkits_carried": self.player.medkits,
             "walls": tuple(sorted(self.walls)),
             "enemies": tuple((enemy.position, enemy.hp) for enemy in self.enemies),
+            "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,
+                                    enemy.intent.kind.value if enemy.intent else None,
+                                    enemy.intent.direction if enemy.intent else None,
+                                    enemy.intent.countdown if enemy.intent else 0,
+                                    enemy.intent.power if enemy.intent else 0,
+                                    enemy.stunned) for enemy in self.enemies),
             "gems": tuple(sorted(self.gems)),
             "fires": tuple(sorted(self.fires)),
             "medkits": tuple(sorted(self.medkits)),

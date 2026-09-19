@@ -34,6 +34,14 @@ def encode_state(env: ArenaEnv) -> str:
             value = "safe"
         adjacent.append(f"{name[0].upper()} {value}")
     enemy_positions = [enemy.position for enemy in env.enemies]
+    tactical_enemies = sorted(env.enemies, key=lambda enemy: env._distance(env.player.position, enemy.position))[:6]
+    intents = "; ".join(
+        f"{enemy.enemy_type.value} {_direction(env.player.position, enemy.position)} distance "
+        f"{env._distance(env.player.position, enemy.position)}, hp={enemy.hp}, "
+        f"intent={enemy.intent.kind.value}{'_' + enemy.intent.direction if enemy.intent and enemy.intent.direction else ''}, "
+        f"countdown={enemy.intent.countdown}"
+        for enemy in tactical_enemies if enemy.intent
+    ) or "none"
     memory = f"Last action {env.last_action}." if env.last_action else "No previous action."
     return (
         f"HP {env.player.hp}/100. Score {env.score}. "
@@ -42,6 +50,7 @@ def encode_state(env: ArenaEnv) -> str:
         f"Nearest enemy {_nearest(env.player.position, enemy_positions)}. "
         f"Nearest gem {_nearest(env.player.position, list(env.gems))}. "
         f"Nearest medkit {_nearest(env.player.position, list(env.medkits))}. "
+        f"Enemy intents: {intents}. "
         f"Enemies {len(env.enemies)}. Gems remaining {len(env.gems)}. "
         f"Attack {'ready' if any(env.enemy_at(env.add(env.player.position, d)) for d in DIRECTIONS) else 'unavailable'}. "
         f"Medkits carried {env.player.medkits}."

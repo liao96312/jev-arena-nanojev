@@ -197,18 +197,18 @@ Enemy 3: bomber at SW distance 3, hp=25, intent=explode, countdown=2
 
 ## 3.5 TODO
 
-- [ ] 新增 `EnemyType`
-- [ ] 新增 `IntentType`
-- [ ] 新增 `Intent`
-- [ ] Enemy 保存 `enemy_type / intent / stunned`
+- [x] 新增 `EnemyType`
+- [x] 新增 `IntentType`
+- [x] 新增 `Intent`
+- [x] Enemy 保存 `enemy_type / intent / stunned`
 - [ ] `reset()` 时按比例生成不同敌人
-- [ ] 新增 `_plan_enemy_intents()`
-- [ ] 新增 `_resolve_enemy_intents()`
-- [ ] 移除旧 `_move_enemies()` 的直接追击主逻辑
-- [ ] Observation 输出 Intent
-- [ ] Replay 保存 Intent
-- [ ] Renderer 显示 Intent 图标 / 箭头 / countdown
-- [ ] 添加 deterministic seed 测试
+- [x] 新增 `_plan_enemy_intents()`
+- [x] 新增 `_resolve_enemy_intents()`
+- [x] 移除旧 `_move_enemies()` 的直接追击主逻辑
+- [x] Observation 输出 Intent
+- [x] Replay 保存 Intent
+- [x] Renderer 显示 Intent 图标 / 箭头 / countdown
+- [x] 添加 deterministic seed 测试
 
 ## 3.6 验收标准
 
@@ -1263,12 +1263,12 @@ TODO：
 
 TODO：
 
-- [ ] EnemyType
-- [ ] Intent
-- [ ] countdown
-- [ ] GUI telegraph
-- [ ] Observation
-- [ ] tests
+- [x] EnemyType
+- [x] Intent
+- [x] countdown
+- [x] GUI telegraph
+- [x] Observation
+- [x] tests
 
 验收：
 
@@ -1749,7 +1749,7 @@ NanoJev 很快，但能力有限。
 ## P0 — 必做
 
 - [ ] 冻结 V1 baseline
-- [ ] Enemy Intent
+- [x] Enemy Intent
 - [ ] Charger
 - [ ] Shove
 - [ ] Enemy 环境伤害
