@@ -23,9 +23,12 @@ class ArenaConfig:
     heal_amount: int = 35
     enemy_move_interval: int = 1
     charger_ratio: float = 0.25
+    bomber_ratio: float = 0.15
     charger_range: int = 4
     charger_damage: int = 10
     collision_damage: int = 15
+    bomber_damage: int = 20
+    bomber_radius: int = 1
     finish_on_all_gems: bool = False
 
 
@@ -43,6 +46,7 @@ def campaign_config(level: int) -> ArenaConfig:
         fire_damage=min(18, 8 + level),
         enemy_move_interval=2,
         charger_ratio=min(0.45, 0.2 + level * 0.03),
+        bomber_ratio=min(0.25, 0.1 + level * 0.02),
         finish_on_all_gems=True,
     )
 
@@ -62,8 +66,9 @@ class ArenaEnv:
     def reset(self, seed: int = 0) -> dict:
         if self.config.enemy_move_interval < 1 or self.config.charger_range < 1:
             raise ValueError("enemy intervals and ranges must be positive")
-        if not 0 <= self.config.charger_ratio <= 1:
-            raise ValueError("charger_ratio must be between zero and one")
+        if (not 0 <= self.config.charger_ratio <= 1 or not 0 <= self.config.bomber_ratio <= 1 or
+                self.config.charger_ratio + self.config.bomber_ratio > 1):
+            raise ValueError("enemy type ratios must be between zero and one and sum to at most one")
         self.seed = seed
         self.rng = random.Random(seed)
         self.tick = self.score = self.gems_collected = self.kills = self.environment_kills = 0
@@ -80,9 +85,13 @@ class ArenaEnv:
         take = iter(cells)
         self.player = Player(next(take))
         self.walls = {next(take) for _ in range(self.config.walls)}
-        self.enemies = [Enemy(next(take), enemy_type=(EnemyType.CHARGER
-                              if self.rng.random() < self.config.charger_ratio else EnemyType.CHASER))
-                        for _ in range(self.config.enemies)]
+        self.enemies = []
+        for _ in range(self.config.enemies):
+            roll = self.rng.random()
+            enemy_type = (EnemyType.BOMBER if roll < self.config.bomber_ratio else
+                          EnemyType.CHARGER if roll < self.config.bomber_ratio + self.config.charger_ratio else
+                          EnemyType.CHASER)
+            self.enemies.append(Enemy(next(take), enemy_type=enemy_type))
         self.gems = {next(take) for _ in range(self.config.gems)}
         self.fires = {next(take) for _ in range(self.config.fires)}
         self.medkits = {next(take) for _ in range(self.config.medkits)}
@@ -226,6 +235,9 @@ class ArenaEnv:
                 enemy.intent = Intent(IntentType.WAIT, countdown=1)
                 continue
             distance = self._distance(enemy.position, self.player.position)
+            if enemy.enemy_type == EnemyType.BOMBER and distance <= self.config.bomber_radius + 1:
+                enemy.intent = Intent(IntentType.EXPLODE, countdown=2, power=self.config.bomber_damage)
+                continue
             if distance == 1:
                 direction = next(name for name, delta in DIRECTIONS.items()
                                  if self.add(enemy.position, name) == self.player.position)
@@ -254,6 +266,8 @@ class ArenaEnv:
         occupied = {enemy.position for enemy in self.enemies}
         resolved: list[Enemy] = []
         for enemy in list(self.enemies):
+            if enemy not in self.enemies:
+                continue
             intent = enemy.intent
             if intent is None:
                 resolved.append(enemy)
@@ -281,10 +295,25 @@ class ArenaEnv:
                             occupied.discard(target)
             elif intent.kind == IntentType.CHARGE and intent.direction:
                 reward += self._resolve_charge(enemy, intent.direction, occupied, events)
+            elif intent.kind == IntentType.EXPLODE:
+                reward += self._resolve_explosion(enemy, intent.power, events)
+                occupied.discard(enemy.position)
             if enemy in self.enemies:
                 resolved.append(enemy)
         if resolved:
             self._plan_enemy_intents(resolved)
+        return reward
+
+    def _resolve_explosion(self, bomber: Enemy, damage: int, events: list[str]) -> float:
+        center = bomber.position
+        self.enemies.remove(bomber)
+        events.append("bomber_explode")
+        reward = 0.0
+        if self._distance(center, self.player.position) <= self.config.bomber_radius:
+            reward += self._damage_entity(self.player, damage, events, "explosion")
+        for enemy in list(self.enemies):
+            if self._distance(center, enemy.position) <= self.config.bomber_radius:
+                reward += self._damage_entity(enemy, damage, events, "explosion")
         return reward
 
     def _resolve_charge(self, enemy: Enemy, direction: str, occupied: set[tuple[int, int]],

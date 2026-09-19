@@ -108,7 +108,7 @@ class ArenaTests(unittest.TestCase):
 
     def test_charger_hits_another_enemy(self):
         env = ArenaEnv(ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0,
-                                   medkits=0, charger_ratio=1))
+                                   medkits=0, charger_ratio=1, bomber_ratio=0))
         env.player.position = (6, 1)
         charger = Enemy((1, 1), enemy_type=EnemyType.CHARGER)
         victim = Enemy((4, 1))
@@ -154,6 +154,23 @@ class ArenaTests(unittest.TestCase):
         env._plan_enemy_intents()
         env.step(Action.SHOVE_E)
         self.assertEqual((pushed.hp, blocker.hp), (25, 25))
+
+    def test_bomber_explosion_hits_player_and_enemy(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, bomber_damage=20))
+        env.player.position = (2, 3)
+        bomber = Enemy((2, 2), enemy_type=EnemyType.BOMBER)
+        victim = Enemy((3, 2), hp=20, stunned=2)
+        env.enemies = [bomber, victim]
+        env._plan_enemy_intents()
+        self.assertEqual((bomber.intent.kind, bomber.intent.countdown), (IntentType.EXPLODE, 2))
+        env.step(Action.WAIT)
+        result = env.step(Action.WAIT)
+        self.assertEqual(env.player.hp, 80)
+        self.assertNotIn(bomber, env.enemies)
+        self.assertNotIn(victim, env.enemies)
+        self.assertEqual(env.environment_kills, 1)
+        self.assertIn("bomber_explode", result.events)
 
 
 if __name__ == "__main__":

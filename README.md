@@ -16,6 +16,8 @@ V1 已冻结为 [`v1-baseline`](https://github.com/liao96312/jev-arena-nanojev/t
 V2 Phase 1 已加入确定性的敌人 Intent：GUI、Observation 与 Replay 会提前显示敌人的移动或近战方向及倒计时。
 Charger 会以橙色标记显示冲锋预告，沿直线冲刺并能撞伤其它敌人。
 相邻敌人会动态提供 Shove 动作，可推入火焰、墙或其它敌人；环境击杀单独计数并写入 Replay。
+Bomber 使用独立紫色贴图并显示两回合爆炸倒计时，爆炸会同时伤害玩家和范围内其它敌人。
+Chaser、Charger、Bomber、Archer 均使用 imagegen 生成的独立透明贴图；Archer 行为尚未启用。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 

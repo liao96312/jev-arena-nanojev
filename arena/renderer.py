@@ -68,11 +68,7 @@ class ArenaRenderer:
             previous = old_enemies.get(id(enemy), enemy.position)
             position = (previous[0] + (enemy.position[0] - previous[0]) * eased,
                         previous[1] + (enemy.position[1] - previous[1]) * eased)
-            if enemy.enemy_type == EnemyType.CHARGER:
-                center = (round(position[0] * self.CELL + self.CELL / 2),
-                          round(position[1] * self.CELL + self.CELL / 2))
-                pg.draw.circle(self.screen, (255, 165, 65), center, self.CELL // 2 - 2, 3)
-            self._sprite(position, "enemy")
+            self._sprite(position, f"enemy_{enemy.enemy_type.value}")
             self._health_bar(position, enemy.hp, 30)
             self._intent(enemy.position, enemy.intent)
         player_position = env.player.position
@@ -127,7 +123,8 @@ class ArenaRenderer:
     def _load_sprites(self) -> dict[str, object]:
         root = Path(__file__).resolve().parents[1] / "assets" / "sprites"
         sprites = {}
-        for name in ("player", "enemy", "gem", "fire", "medkit", "wall"):
+        for name in ("player", "enemy_chaser", "enemy_charger", "enemy_bomber", "enemy_archer",
+                     "gem", "fire", "medkit", "wall"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -166,9 +163,11 @@ class ArenaRenderer:
             return
         arrows = {"n": "↑", "s": "↓", "w": "←", "e": "→"}
         icon = ("⚔" if intent.kind == IntentType.MELEE else
+                "B" if intent.kind == IntentType.EXPLODE else
                 "C" + arrows.get(intent.direction, "·") if intent.kind == IntentType.CHARGE else
                 arrows.get(intent.direction, "·"))
         color = ((255, 115, 115) if intent.kind == IntentType.MELEE else
+                 (235, 100, 255) if intent.kind == IntentType.EXPLODE else
                  (255, 175, 70) if intent.kind == IntentType.CHARGE else (105, 210, 255))
         label = self.small.render(f"{icon}{intent.countdown}", True, color)
         center = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + 4)
@@ -183,6 +182,7 @@ class ArenaRenderer:
             elif event == "environment_kill": labels.append("环境击杀！")
             elif event.startswith("shove:"): labels.append("推动敌人")
             elif event.startswith("enemy_collision:"): labels.append("敌人碰撞")
+            elif event == "bomber_explode": labels.append("炸弹怪爆炸！")
             elif event == "heal": labels.append("恢复生命")
             elif event == "level_complete": labels.append("关卡完成！准备进入下一关")
             elif event.startswith("damage:"): labels.append(f"受到 {event.rsplit(':', 1)[1]} 点伤害")

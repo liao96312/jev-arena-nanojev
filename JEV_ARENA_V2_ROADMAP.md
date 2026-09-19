@@ -489,7 +489,7 @@ Bomber 是解决“怪越多越死局”的重要设计。
 - [ ] Chaser Intent
 - [x] Charger Intent
 - [ ] Archer Intent
-- [ ] Bomber Intent
+- [x] Bomber Intent
 - [ ] 每种敌人独立 HP / damage / cooldown
 - [x] 地图生成保持敌人组成合理
 - [x] Renderer 不同图标
@@ -1304,7 +1304,7 @@ TODO：
 - [ ] Chaser
 - [x] Charger
 - [ ] Archer
-- [ ] Bomber
+- [x] Bomber
 - [ ] friendly fire
 - [ ] intent renderer
 - [ ] tests
@@ -1753,7 +1753,7 @@ NanoJev 很快，但能力有限。
 - [x] Charger
 - [x] Shove
 - [x] Enemy 环境伤害
-- [ ] Bomber
+- [x] Bomber
 - [x] Friendly Fire
 - [ ] Dash
 - [ ] Observation V2
