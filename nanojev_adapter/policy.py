@@ -72,7 +72,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(probabilities), key=score)
-    if mode == "hybrid" and env.gems and not (chosen.startswith("attack_") or chosen == "heal"):
+    if mode == "hybrid" and env.gems and (chosen.startswith("move_") or chosen == "wait"):
         routes = _gem_route_actions(env, probabilities)
         if routes:
             routed = max(sorted(routes), key=probabilities.__getitem__)

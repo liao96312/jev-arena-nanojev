@@ -84,6 +84,13 @@ class NanoJevAdapterTests(unittest.TestCase):
         action, reason = select_action({"wait": .9, "move_n": .1}, env, "hybrid")
         self.assertEqual((action, reason), ("move_n", "planner_rerank"))
 
+    def test_hybrid_does_not_override_dash_with_gem_route(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0, medkits=0))
+        env.player.position = (2, 2)
+        env.gems = {(4, 2)}
+        action, reason = select_action({"dash_e": .9, "move_e": .1}, env, "hybrid")
+        self.assertEqual((action, reason), ("dash_e", "model_argmax"))
+
     def test_agent_batches_multiple_states_in_one_call(self):
         client = FakeClient()
         agent = NanoJevAgent(client, max_batch_states=2)

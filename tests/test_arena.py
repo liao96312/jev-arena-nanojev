@@ -172,6 +172,27 @@ class ArenaTests(unittest.TestCase):
         self.assertEqual(env.environment_kills, 1)
         self.assertIn("bomber_explode", result.events)
 
+    def test_dash_moves_two_cells_and_ticks_cooldown(self):
+        env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0))
+        env.player.position = (1, 2)
+        self.assertIn(Action.DASH_E, env.legal_actions())
+        self.assertIn("cooldown becomes 3", build_candidates(env)["dash_e"])
+        env.step(Action.DASH_E)
+        self.assertEqual((env.player.position, env.player.cooldowns["dash"]), ((3, 2), 3))
+        self.assertNotIn(Action.DASH_E, env.legal_actions())
+        for expected in (2, 1, 0):
+            env.step(Action.WAIT)
+            self.assertEqual(env.player.cooldowns["dash"], expected)
+        self.assertIn(Action.DASH_E, env.legal_actions())
+
+    def test_dash_cannot_cross_enemy_or_wall(self):
+        env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0))
+        env.player.position = (1, 2)
+        env.walls = {(2, 2)}
+        self.assertNotIn(Action.DASH_E, env.legal_actions())
+
 
 if __name__ == "__main__":
     unittest.main()

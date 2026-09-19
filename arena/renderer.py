@@ -74,7 +74,7 @@ class ArenaRenderer:
         player_position = env.player.position
         attack_effect = None
         if animation:
-            if animated_action.startswith("move_"):
+            if animated_action.startswith(("move_", "dash_")):
                 player_position = (old_player[0] + (player_position[0] - old_player[0]) * eased,
                                    old_player[1] + (player_position[1] - old_player[1]) * eased)
             elif animated_action.startswith(("attack_", "shove_")):
@@ -103,7 +103,10 @@ class ArenaRenderer:
                        colors["muted"], small=True)
         self._text(f"难度：敌人 {env.config.enemies}  火焰 {env.config.fires}  怪速 1/{env.config.enemy_move_interval}",
                    left, 174, colors["muted"], small=True)
-        y = 205
+        dash_cd = env.player.cooldowns.get("dash", 0)
+        self._text(f"技能：冲刺 {'就绪' if not dash_cd else f'冷却 {dash_cd}'}", left, 196,
+                   colors["selected"] if not dash_cd else colors["muted"], small=True)
+        y = 225
         for name, probability in sorted(probabilities.items(), key=lambda item: item[1], reverse=True):
             self._text(f"{ACTION_NAMES.get(name, name)}  {probability:>6.1%}", left, y,
                        colors["text"], small=True)
@@ -183,6 +186,7 @@ class ArenaRenderer:
             elif event.startswith("shove:"): labels.append("推动敌人")
             elif event.startswith("enemy_collision:"): labels.append("敌人碰撞")
             elif event == "bomber_explode": labels.append("炸弹怪爆炸！")
+            elif event.startswith("dash:"): labels.append("冲刺！")
             elif event == "heal": labels.append("恢复生命")
             elif event == "level_complete": labels.append("关卡完成！准备进入下一关")
             elif event.startswith("damage:"): labels.append(f"受到 {event.rsplit(':', 1)[1]} 点伤害")

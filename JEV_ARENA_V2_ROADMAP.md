@@ -606,14 +606,14 @@ class Player:
 
 ## 7.6 TODO
 
-- [ ] Player cooldown 数据结构
-- [ ] 每回合 cooldown tick
-- [ ] Dash 合法性判断
+- [x] Player cooldown 数据结构
+- [x] 每回合 cooldown tick
+- [x] Dash 合法性判断
 - [ ] EMP 范围计算
 - [ ] Candidate 描述剩余 CD
-- [ ] Observation 输出 CD
-- [ ] Renderer 显示技能状态
-- [ ] Dataset 支持技能动作
+- [x] Observation 输出 CD
+- [x] Renderer 显示技能状态
+- [x] Dataset 支持技能动作
 
 ---
 
@@ -1321,11 +1321,11 @@ TODO：
 
 TODO：
 
-- [ ] Dash
+- [x] Dash
 - [ ] EMP
-- [ ] Cooldown
-- [ ] Dynamic Candidates
-- [ ] skill UI
+- [x] Cooldown
+- [x] Dynamic Candidates
+- [x] skill UI
 
 验收：
 
@@ -1755,7 +1755,7 @@ NanoJev 很快，但能力有限。
 - [x] Enemy 环境伤害
 - [x] Bomber
 - [x] Friendly Fire
-- [ ] Dash
+- [x] Dash
 - [ ] Observation V2
 - [ ] Candidate V2
 - [ ] tactical scenario tests

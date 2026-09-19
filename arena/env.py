@@ -29,6 +29,7 @@ class ArenaConfig:
     collision_damage: int = 15
     bomber_damage: int = 20
     bomber_radius: int = 1
+    dash_cooldown: int = 3
     finish_on_all_gems: bool = False
 
 
@@ -122,6 +123,11 @@ class ArenaEnv:
                 actions.append(Action(f"attack_{direction}"))
                 if self.in_bounds(self.add(target, direction)):
                     actions.append(Action(f"shove_{direction}"))
+            destination = self.add(target, direction)
+            if (not self.player.cooldowns.get("dash", 0) and self.in_bounds(target) and
+                    self.in_bounds(destination) and target not in self.walls and destination not in self.walls and
+                    not self.enemy_at(target) and not self.enemy_at(destination)):
+                actions.append(Action(f"dash_{direction}"))
         if self.player.medkits and self.player.hp < 100:
             actions.append(Action.HEAL)
         actions.append(Action.WAIT)
@@ -133,6 +139,7 @@ class ArenaEnv:
         action = Action(action)
         if action not in self.legal_actions():
             raise ValueError(f"illegal action: {action}")
+        self._tick_cooldowns()
 
         origin = self.player.position
         reward = 0.05
@@ -142,6 +149,18 @@ class ArenaEnv:
             reward += self._collect(events)
             if self.player.position in self.fires:
                 reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
+        elif action.value.startswith("dash_"):
+            direction = action.value[-1]
+            traversed = []
+            for _ in range(2):
+                self.player.position = self.add(self.player.position, direction)
+                traversed.append(self.player.position)
+            self.player.cooldowns["dash"] = self.config.dash_cooldown
+            events.append(f"dash:{direction}")
+            reward += self._collect(events)
+            for position in traversed:
+                if position in self.fires:
+                    reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
         elif action.value.startswith("attack_"):
             enemy = self.enemy_at(self.add(self.player.position, action.value[-1]))
             assert enemy is not None
@@ -176,6 +195,10 @@ class ArenaEnv:
             self.done = True
             events.append("completed")
         return StepResult(round(reward, 4), self.done, tuple(events))
+
+    def _tick_cooldowns(self) -> None:
+        for skill, remaining in self.player.cooldowns.items():
+            self.player.cooldowns[skill] = max(0, remaining - 1)
 
     def _collect(self, events: list[str]) -> float:
         reward = 0.0
@@ -361,6 +384,7 @@ class ArenaEnv:
             "previous_position": self.previous_player_position,
             "last_action": self.last_action,
             "medkits_carried": self.player.medkits,
+            "cooldowns": tuple(sorted(self.player.cooldowns.items())),
             "walls": tuple(sorted(self.walls)),
             "enemies": tuple((enemy.position, enemy.hp) for enemy in self.enemies),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,

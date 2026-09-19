@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 
@@ -15,6 +15,10 @@ class Action(StrEnum):
     SHOVE_S = "shove_s"
     SHOVE_W = "shove_w"
     SHOVE_E = "shove_e"
+    DASH_N = "dash_n"
+    DASH_S = "dash_s"
+    DASH_W = "dash_w"
+    DASH_E = "dash_e"
     HEAL = "heal"
     WAIT = "wait"
 
@@ -48,6 +52,7 @@ class Player:
     position: tuple[int, int]
     hp: int = 100
     medkits: int = 0
+    cooldowns: dict[str, int] = field(default_factory=lambda: {"dash": 0})
 
 
 @dataclass

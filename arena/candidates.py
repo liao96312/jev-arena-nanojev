@@ -16,6 +16,10 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
         Action.SHOVE_S: "Shove the adjacent enemy south",
         Action.SHOVE_W: "Shove the adjacent enemy west",
         Action.SHOVE_E: "Shove the adjacent enemy east",
+        Action.DASH_N: "Dash two cells north",
+        Action.DASH_S: "Dash two cells south",
+        Action.DASH_W: "Dash two cells west",
+        Action.DASH_E: "Dash two cells east",
         Action.HEAL: "Use one carried medkit",
         Action.WAIT: "Remain in the current cell",
     }
@@ -50,5 +54,16 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                 description += f" into another enemy; both take {env.config.collision_damage} collision damage"
             else:
                 description += " by one cell"
+        elif action.value.startswith("dash_"):
+            direction = action.value[-1]
+            middle = env.add(env.player.position, direction)
+            target = env.add(middle, direction)
+            fire_tiles = sum(position in env.fires for position in (middle, target))
+            description += f"; cooldown becomes {env.config.dash_cooldown}"
+            description += (f"; crosses {fire_tiles} fire tile(s)" if fire_tiles else "; path is free of fire")
+            if env.gems:
+                before = min(env._distance(env.player.position, gem) for gem in env.gems)
+                after = min(env._distance(target, gem) for gem in env.gems)
+                description += f"; nearest gem distance {before} to {after}"
         candidates[action.value] = description
     return candidates

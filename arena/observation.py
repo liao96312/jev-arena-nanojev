@@ -45,6 +45,7 @@ def encode_state(env: ArenaEnv) -> str:
     memory = f"Last action {env.last_action}." if env.last_action else "No previous action."
     return (
         f"HP {env.player.hp}/100. Score {env.score}. "
+        f"Cooldowns: dash={env.player.cooldowns.get('dash', 0)}. "
         f"{memory} "
         f"Adjacent: {', '.join(adjacent)}. "
         f"Nearest enemy {_nearest(env.player.position, enemy_positions)}. "
