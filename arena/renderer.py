@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 
 from arena.env import ArenaEnv
-from arena.entities import IntentType
+from arena.entities import EnemyType, IntentType
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev"}
 ACTION_NAMES = {
@@ -68,6 +68,10 @@ class ArenaRenderer:
             previous = old_enemies.get(id(enemy), enemy.position)
             position = (previous[0] + (enemy.position[0] - previous[0]) * eased,
                         previous[1] + (enemy.position[1] - previous[1]) * eased)
+            if enemy.enemy_type == EnemyType.CHARGER:
+                center = (round(position[0] * self.CELL + self.CELL / 2),
+                          round(position[1] * self.CELL + self.CELL / 2))
+                pg.draw.circle(self.screen, (255, 165, 65), center, self.CELL // 2 - 2, 3)
             self._sprite(position, "enemy")
             self._health_bar(position, enemy.hp, 30)
             self._intent(enemy.position, enemy.intent)
@@ -161,8 +165,11 @@ class ArenaRenderer:
         if not intent:
             return
         arrows = {"n": "↑", "s": "↓", "w": "←", "e": "→"}
-        icon = "⚔" if intent.kind == IntentType.MELEE else arrows.get(intent.direction, "·")
-        color = (255, 115, 115) if intent.kind == IntentType.MELEE else (105, 210, 255)
+        icon = ("⚔" if intent.kind == IntentType.MELEE else
+                "C" + arrows.get(intent.direction, "·") if intent.kind == IntentType.CHARGE else
+                arrows.get(intent.direction, "·"))
+        color = ((255, 115, 115) if intent.kind == IntentType.MELEE else
+                 (255, 175, 70) if intent.kind == IntentType.CHARGE else (105, 210, 255))
         label = self.small.render(f"{icon}{intent.countdown}", True, color)
         center = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + 4)
         self.screen.blit(label, label.get_rect(center=center))

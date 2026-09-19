@@ -3,7 +3,7 @@ import unittest
 from agents import RandomAgent, RuleAgent
 from arena import ArenaConfig, ArenaEnv, campaign_config
 from arena.candidates import build_candidates
-from arena.entities import Action, Enemy, IntentType
+from arena.entities import Action, Enemy, EnemyType, IntentType
 
 
 class ArenaTests(unittest.TestCase):
@@ -105,6 +105,29 @@ class ArenaTests(unittest.TestCase):
         result = env.step(Action.MOVE_N)
         self.assertEqual(env.player.hp, 100)
         self.assertNotIn("enemy_melee", result.events)
+
+    def test_charger_hits_another_enemy(self):
+        env = ArenaEnv(ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=1))
+        env.player.position = (6, 1)
+        charger = Enemy((1, 1), enemy_type=EnemyType.CHARGER)
+        victim = Enemy((4, 1))
+        env.enemies = [charger, victim]
+        env._plan_enemy_intents()
+        self.assertEqual((charger.intent.kind, charger.intent.direction), (IntentType.CHARGE, "e"))
+        result = env.step(Action.WAIT)
+        self.assertEqual(charger.position, (3, 1))
+        self.assertEqual(victim.hp, 15)
+        self.assertIn("enemy_collision:15", result.events)
+
+    def test_charger_mix_is_seed_deterministic(self):
+        config = ArenaConfig(enemies=20, charger_ratio=0.5)
+        first, second = ArenaEnv(config), ArenaEnv(config)
+        first.reset(42)
+        second.reset(42)
+        self.assertEqual([enemy.enemy_type for enemy in first.enemies],
+                         [enemy.enemy_type for enemy in second.enemies])
+        self.assertIn(EnemyType.CHARGER, [enemy.enemy_type for enemy in first.enemies])
 
 
 if __name__ == "__main__":

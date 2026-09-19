@@ -4,7 +4,7 @@ import copy
 import random
 from dataclasses import dataclass
 
-from .entities import DIRECTIONS, Action, Enemy, Intent, IntentType, Player
+from .entities import DIRECTIONS, Action, Enemy, EnemyType, Intent, IntentType, Player
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,10 @@ class ArenaConfig:
     attack_damage: int = 20
     heal_amount: int = 35
     enemy_move_interval: int = 1
+    charger_ratio: float = 0.25
+    charger_range: int = 4
+    charger_damage: int = 10
+    collision_damage: int = 15
     finish_on_all_gems: bool = False
 
 
@@ -38,6 +42,7 @@ def campaign_config(level: int) -> ArenaConfig:
         enemy_damage=min(12, 4 + (level - 1) // 2),
         fire_damage=min(18, 8 + level),
         enemy_move_interval=2,
+        charger_ratio=min(0.45, 0.2 + level * 0.03),
         finish_on_all_gems=True,
     )
 
@@ -55,8 +60,10 @@ class ArenaEnv:
         self.reset(0)
 
     def reset(self, seed: int = 0) -> dict:
-        if self.config.enemy_move_interval < 1:
-            raise ValueError("enemy_move_interval must be positive")
+        if self.config.enemy_move_interval < 1 or self.config.charger_range < 1:
+            raise ValueError("enemy intervals and ranges must be positive")
+        if not 0 <= self.config.charger_ratio <= 1:
+            raise ValueError("charger_ratio must be between zero and one")
         self.seed = seed
         self.rng = random.Random(seed)
         self.tick = self.score = self.gems_collected = self.kills = 0
@@ -73,7 +80,9 @@ class ArenaEnv:
         take = iter(cells)
         self.player = Player(next(take))
         self.walls = {next(take) for _ in range(self.config.walls)}
-        self.enemies = [Enemy(next(take)) for _ in range(self.config.enemies)]
+        self.enemies = [Enemy(next(take), enemy_type=(EnemyType.CHARGER
+                              if self.rng.random() < self.config.charger_ratio else EnemyType.CHASER))
+                        for _ in range(self.config.enemies)]
         self.gems = {next(take) for _ in range(self.config.gems)}
         self.fires = {next(take) for _ in range(self.config.fires)}
         self.medkits = {next(take) for _ in range(self.config.medkits)}
@@ -194,6 +203,13 @@ class ArenaEnv:
                 enemy.intent = Intent(IntentType.MELEE, direction, self.config.enemy_move_interval,
                                       self.config.enemy_damage)
                 continue
+            dx = self.player.position[0] - enemy.position[0]
+            dy = self.player.position[1] - enemy.position[1]
+            if enemy.enemy_type == EnemyType.CHARGER and (dx == 0 or dy == 0):
+                direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
+                enemy.intent = Intent(IntentType.CHARGE, direction, self.config.enemy_move_interval,
+                                      self.config.charger_damage)
+                continue
             directions = []
             for direction in DIRECTIONS:
                 target = self.add(enemy.position, direction)
@@ -208,7 +224,7 @@ class ArenaEnv:
         reward = 0.0
         occupied = {enemy.position for enemy in self.enemies}
         resolved: list[Enemy] = []
-        for enemy in self.enemies:
+        for enemy in list(self.enemies):
             intent = enemy.intent
             if intent is None:
                 resolved.append(enemy)
@@ -230,9 +246,42 @@ class ArenaEnv:
                     enemy.position = target
                     occupied.add(target)
                     events.append("enemy_move")
-            resolved.append(enemy)
+            elif intent.kind == IntentType.CHARGE and intent.direction:
+                reward += self._resolve_charge(enemy, intent.direction, occupied, events)
+            if enemy in self.enemies:
+                resolved.append(enemy)
         if resolved:
             self._plan_enemy_intents(resolved)
+        return reward
+
+    def _resolve_charge(self, enemy: Enemy, direction: str, occupied: set[tuple[int, int]],
+                        events: list[str]) -> float:
+        reward = 0.0
+        for _ in range(self.config.charger_range):
+            target = self.add(enemy.position, direction)
+            if not self.in_bounds(target) or target in self.walls:
+                events.append("charge_blocked")
+                break
+            victim = self.enemy_at(target)
+            if victim:
+                victim.hp -= self.config.collision_damage
+                events.append(f"enemy_collision:{self.config.collision_damage}")
+                if victim.hp <= 0:
+                    self.enemies.remove(victim)
+                    occupied.discard(target)
+                    self.kills += 1
+                    self.score += 20
+                    reward += 20
+                    events.extend(("friendly_fire_kill", "kill"))
+                break
+            if target == self.player.position:
+                reward += self._damage(self.config.charger_damage, events, "charge")
+                events.append("charger_hit")
+                break
+            occupied.remove(enemy.position)
+            enemy.position = target
+            occupied.add(target)
+            events.append("charger_move")
         return reward
 
     @staticmethod

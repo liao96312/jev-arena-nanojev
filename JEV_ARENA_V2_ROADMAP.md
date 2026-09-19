@@ -201,7 +201,7 @@ Enemy 3: bomber at SW distance 3, hp=25, intent=explode, countdown=2
 - [x] 新增 `IntentType`
 - [x] 新增 `Intent`
 - [x] Enemy 保存 `enemy_type / intent / stunned`
-- [ ] `reset()` 时按比例生成不同敌人
+- [x] `reset()` 时按比例生成不同敌人
 - [x] 新增 `_plan_enemy_intents()`
 - [x] 新增 `_resolve_enemy_intents()`
 - [x] 移除旧 `_move_enemies()` 的直接追击主逻辑
@@ -487,14 +487,14 @@ Bomber 是解决“怪越多越死局”的重要设计。
 ## 6.5 TODO
 
 - [ ] Chaser Intent
-- [ ] Charger Intent
+- [x] Charger Intent
 - [ ] Archer Intent
 - [ ] Bomber Intent
 - [ ] 每种敌人独立 HP / damage / cooldown
-- [ ] 地图生成保持敌人组成合理
-- [ ] Renderer 不同图标
+- [x] 地图生成保持敌人组成合理
+- [x] Renderer 不同图标
 - [ ] Observation 标明 enemy_type
-- [ ] enemy-friendly-fire 测试
+- [x] enemy-friendly-fire 测试
 
 ---
 
@@ -1302,7 +1302,7 @@ TODO：
 TODO：
 
 - [ ] Chaser
-- [ ] Charger
+- [x] Charger
 - [ ] Archer
 - [ ] Bomber
 - [ ] friendly fire
@@ -1750,7 +1750,7 @@ NanoJev 很快，但能力有限。
 
 - [ ] 冻结 V1 baseline
 - [x] Enemy Intent
-- [ ] Charger
+- [x] Charger
 - [ ] Shove
 - [ ] Enemy 环境伤害
 - [ ] Bomber
