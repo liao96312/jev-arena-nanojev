@@ -452,7 +452,7 @@ class ArenaEnv:
             dy = self.player.position[1] - enemy.position[1]
             if enemy.enemy_type == EnemyType.CHARGER and (dx == 0 or dy == 0):
                 direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
-                if self._clear_shot_to_player(enemy.position, direction):
+                if self._clear_shot_to_player(enemy.position, direction, self.fires):
                     enemy.intent = Intent(IntentType.CHARGE, direction, self.config.enemy_move_interval,
                                           self.config.charger_damage)
                     continue
@@ -471,7 +471,7 @@ class ArenaEnv:
         visited = {start}
         while queue:
             position, first = queue.popleft()
-            if (position in visited or not self.in_bounds(position) or position in self.walls or
+            if (position in visited or not self.in_bounds(position) or position in self.walls or position in self.fires or
                     position in self.barrels or position in occupied or position == self.player.position):
                 continue
             if self._distance(position, self.player.position) == 1:
@@ -505,16 +505,13 @@ class ArenaEnv:
                     events.append("enemy_melee")
             elif intent.kind == IntentType.MOVE and intent.direction:
                 target = self.add(enemy.position, intent.direction)
-                if (self.in_bounds(target) and target not in self.walls and target not in self.barrels and target not in occupied and
+                if (self.in_bounds(target) and target not in self.walls and target not in self.fires and
+                        target not in self.barrels and target not in occupied and
                         target != self.player.position):
                     occupied.remove(enemy.position)
                     enemy.position = target
                     occupied.add(target)
                     events.append("enemy_move")
-                    if target in self.fires:
-                        reward += self._damage_entity(enemy, self.config.fire_damage, events, "fire")
-                        if enemy not in self.enemies:
-                            occupied.discard(target)
             elif intent.kind == IntentType.CHARGE and intent.direction:
                 reward += self._resolve_charge(enemy, intent.direction, occupied, events)
             elif intent.kind == IntentType.SHOOT and intent.direction:
@@ -549,11 +546,12 @@ class ArenaEnv:
                 reward += self._explode_barrel(barrel, events)
         return reward
 
-    def _clear_shot_to_player(self, origin: tuple[int, int], direction: str) -> bool:
+    def _clear_shot_to_player(self, origin: tuple[int, int], direction: str,
+                              blocked: set[tuple[int, int]] | None = None) -> bool:
         target = origin
         while True:
             target = self.add(target, direction)
-            if not self.in_bounds(target) or target in self.walls:
+            if not self.in_bounds(target) or target in self.walls or (blocked and target in blocked):
                 return False
             if target == self.player.position:
                 return True
@@ -601,7 +599,7 @@ class ArenaEnv:
         reward = 0.0
         for _ in range(self.config.charger_range):
             target = self.add(enemy.position, direction)
-            if not self.in_bounds(target) or target in self.walls:
+            if not self.in_bounds(target) or target in self.walls or target in self.fires:
                 events.append("charge_blocked")
                 break
             if target in self.barrels:
@@ -623,11 +621,6 @@ class ArenaEnv:
             enemy.position = target
             occupied.add(target)
             events.append("charger_move")
-            if target in self.fires:
-                reward += self._damage_entity(enemy, self.config.fire_damage, events, "fire")
-                if enemy not in self.enemies:
-                    occupied.discard(target)
-                    break
         return reward
 
     @staticmethod

@@ -108,6 +108,26 @@ class ArenaTests(unittest.TestCase):
                 self.assertEqual((env.enemies[0].intent.kind, env.enemies[0].intent.direction),
                                  (IntentType.MOVE, "n"))
 
+    def test_enemies_route_around_fire_instead_of_entering_it(self):
+        config = ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
+                             medkits=0, enemy_move_interval=1)
+        for enemy_type in EnemyType:
+            with self.subTest(enemy_type=enemy_type):
+                env = ArenaEnv(config)
+                env.player.position = (4, 3)
+                env.fires = {(2, 2)}
+                env.enemies = [Enemy((1, 2), enemy_type=enemy_type)]
+                env._plan_enemy_intents()
+                self.assertEqual(env.enemies[0].intent.kind, IntentType.MOVE)
+                self.assertNotIn(env.add(env.enemies[0].position, env.enemies[0].intent.direction),
+                                 env.fires)
+
+        env = ArenaEnv(config)
+        env.player.position, env.fires = (4, 2), {(2, 2)}
+        env.enemies = [Enemy((1, 2), enemy_type=EnemyType.CHARGER)]
+        env._plan_enemy_intents()
+        self.assertEqual(env.enemies[0].intent.kind, IntentType.MOVE)
+
     def test_player_can_dodge_visible_melee_intent(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
                                    medkits=0))
