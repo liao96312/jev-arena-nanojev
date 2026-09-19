@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import random
+from collections import deque
 from dataclasses import dataclass
 
 from .entities import DIRECTIONS, Action, Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout
@@ -451,24 +452,33 @@ class ArenaEnv:
             dy = self.player.position[1] - enemy.position[1]
             if enemy.enemy_type == EnemyType.CHARGER and (dx == 0 or dy == 0):
                 direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
-                enemy.intent = Intent(IntentType.CHARGE, direction, self.config.enemy_move_interval,
-                                      self.config.charger_damage)
-                continue
+                if self._clear_shot_to_player(enemy.position, direction):
+                    enemy.intent = Intent(IntentType.CHARGE, direction, self.config.enemy_move_interval,
+                                          self.config.charger_damage)
+                    continue
             if enemy.enemy_type == EnemyType.ARCHER and (dx == 0 or dy == 0):
                 direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
                 if self._clear_shot_to_player(enemy.position, direction):
                     enemy.intent = Intent(IntentType.SHOOT, direction, self.config.archer_countdown,
                                           self.config.archer_damage)
                     continue
-            directions = []
-            for direction in DIRECTIONS:
-                target = self.add(enemy.position, direction)
-                if (self.in_bounds(target) and target not in self.walls and target not in self.barrels and target not in occupied and
-                        target != self.player.position and
-                        self._distance(target, self.player.position) < distance):
-                    directions.append(direction)
-            enemy.intent = Intent(IntentType.MOVE, self.rng.choice(directions),
-                                  self._enemy_interval(enemy)) if directions else Intent(IntentType.WAIT)
+            direction = self._enemy_path_direction(enemy.position, occupied - {enemy.position})
+            enemy.intent = (Intent(IntentType.MOVE, direction, self._enemy_interval(enemy))
+                            if direction else Intent(IntentType.WAIT))
+
+    def _enemy_path_direction(self, start: tuple[int, int], occupied: set[tuple[int, int]]) -> str | None:
+        queue = deque((self.add(start, direction), direction) for direction in DIRECTIONS)
+        visited = {start}
+        while queue:
+            position, first = queue.popleft()
+            if (position in visited or not self.in_bounds(position) or position in self.walls or
+                    position in self.barrels or position in occupied or position == self.player.position):
+                continue
+            if self._distance(position, self.player.position) == 1:
+                return first
+            visited.add(position)
+            queue.extend((self.add(position, direction), first) for direction in DIRECTIONS)
+        return None
 
     def _enemy_interval(self, enemy: Enemy) -> int:
         return self.config.enemy_move_interval + (enemy.enemy_type != EnemyType.CHASER)
