@@ -22,7 +22,9 @@ Chaser、Charger、Bomber、Archer 均使用 imagegen 生成的独立透明贴�
 玩家在路径畅通时可向四个方向 Dash 两格，技能冷却 3 回合；Observation、动态候选与 GUI 会显示技能状态。
 玩家可拾取复合弓和脉冲手枪：弓射程 6、伤害 15 并击退，手枪射程 8、伤害 12；
 武器与有限弹药跨关并保存到 `saves/campaign.json`，箭束和能量弹匣可补充弹药。
+敌人进入相邻一格时会动态提供 EMP 动作，可打断近战、冲锋和爆炸，冷却 4 回合。
 Chaser 按基础节奏追击，Charger 普通移动较慢但冲锋更快，Bomber 与 Archer 普通移动再慢一拍。
+地图生成会验证出生点至少两个出口、全部宝石可达且存在立即可存活动作；死图最多重生成 20 次。
 RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。

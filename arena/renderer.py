@@ -12,7 +12,7 @@ ACTION_NAMES = {
     "attack_n": "向上攻击", "attack_s": "向下攻击", "attack_w": "向左攻击", "attack_e": "向右攻击",
     "shoot_bow_n": "向上射箭", "shoot_bow_s": "向下射箭", "shoot_bow_w": "向左射箭", "shoot_bow_e": "向右射箭",
     "shoot_pistol_n": "向上开枪", "shoot_pistol_s": "向下开枪", "shoot_pistol_w": "向左开枪", "shoot_pistol_e": "向右开枪",
-    "heal": "使用药包", "wait": "原地等待", "-": "等待决策",
+    "emp": "释放 EMP", "heal": "使用药包", "wait": "原地等待", "-": "等待决策",
 }
 REASON_NAMES = {
     "model_argmax": "模型首选", "backtrack_avoided": "避免折返",
@@ -118,8 +118,9 @@ class ArenaRenderer:
         self._text(f"难度：敌人 {env.config.enemies}  火焰 {env.config.fires}  追{env.config.enemy_move_interval}/远爆{env.config.enemy_move_interval + 1}",
                    left, 174, colors["muted"], small=True)
         dash_cd = env.player.cooldowns.get("dash", 0)
-        self._text(f"技能：冲刺 {'就绪' if not dash_cd else f'冷却 {dash_cd}'}", left, 196,
-                   colors["selected"] if not dash_cd else colors["muted"], small=True)
+        emp_cd = env.player.cooldowns.get("emp", 0)
+        self._text(f"技能：冲刺 {'就绪' if not dash_cd else dash_cd}  EMP {'就绪' if not emp_cd else emp_cd}",
+                   left, 196, colors["selected"] if not dash_cd and not emp_cd else colors["muted"], small=True)
         loadout = env.player.loadout
         self._text(f"武器：弓 {'未获得' if not loadout.bow else f'{loadout.arrows} 箭'}  "
                    f"手枪 {'未获得' if not loadout.pistol else f'{loadout.energy} 发'}",
@@ -241,6 +242,7 @@ class ArenaRenderer:
             elif event.startswith("archer_shot:"): labels.append("射手放箭！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
+            elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")
             elif event.startswith("dash:"): labels.append("冲刺！")
             elif event == "heal": labels.append("恢复生命")
             elif event == "level_complete": labels.append("关卡完成！准备进入下一关")

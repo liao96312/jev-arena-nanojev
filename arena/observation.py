@@ -52,9 +52,12 @@ def encode_state(env: ArenaEnv) -> str:
         inventory = (f" Inv bow={env.player.loadout.arrows if env.player.loadout.bow else 'no'} "
                      f"pistol={env.player.loadout.energy if env.player.loadout.pistol else 'no'} "
                      f"pickup={_nearest(env.player.position, pickups)}.")
+    dash_cd = env.player.cooldowns.get("dash", 0)
+    emp_cd = env.player.cooldowns.get("emp", 0)
+    cooldowns = f"{dash_cd}/{emp_cd}" if emp_cd else str(dash_cd)
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
-        f"cd={env.player.cooldowns.get('dash', 0)} last={memory}. "
+        f"cd={cooldowns} last={memory}. "
         f"Adj {','.join(adjacent)}. "
         f"Near enemy={_nearest(env.player.position, enemy_positions)} "
         f"gem={_nearest(env.player.position, list(env.gems))} "

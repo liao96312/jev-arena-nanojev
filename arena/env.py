@@ -41,6 +41,8 @@ class ArenaConfig:
     pistol_damage: int = 12
     pistol_range: int = 8
     dash_cooldown: int = 3
+    emp_cooldown: int = 4
+    emp_radius: int = 1
     finish_on_all_gems: bool = False
 
 
@@ -95,6 +97,14 @@ class ArenaEnv:
         self.previous_player_position: tuple[int, int] | None = None
         self.last_action: str | None = None
         self.done = False
+        for _ in range(20):
+            self._generate_map()
+            self._plan_enemy_intents()
+            if self._map_is_playable():
+                return self.observation()
+        raise RuntimeError("could not generate a playable map after 20 attempts")
+
+    def _generate_map(self) -> None:
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
         needed = (1 + self.config.walls + self.config.enemies + self.config.gems + self.config.fires +
@@ -124,8 +134,34 @@ class ArenaEnv:
         self.arrow_bundles = {next(take) for _ in range(self.config.arrow_bundles)}
         self.energy_cells = {next(take) for _ in range(self.config.energy_cells)}
         self._ensure_pickups_reachable()
-        self._plan_enemy_intents()
-        return self.observation()
+
+    def _reachable_cells(self) -> set[tuple[int, int]]:
+        reachable = {self.player.position}
+        frontier = [self.player.position]
+        while frontier:
+            position = frontier.pop()
+            for direction in DIRECTIONS:
+                target = self.add(position, direction)
+                if self.in_bounds(target) and target not in self.walls and target not in reachable:
+                    reachable.add(target)
+                    frontier.append(target)
+        return reachable
+
+    def _map_is_playable(self) -> bool:
+        possible_exits = sum(self.in_bounds(self.add(self.player.position, direction))
+                             for direction in DIRECTIONS)
+        exits = sum(self.in_bounds(self.add(self.player.position, direction)) and
+                    self.add(self.player.position, direction) not in self.walls and
+                    not self.enemy_at(self.add(self.player.position, direction))
+                    for direction in DIRECTIONS)
+        if exits < min(2, possible_exits) or not self.gems <= self._reachable_cells():
+            return False
+        for action in self.legal_actions():
+            simulation = self.clone()
+            simulation.step(action)
+            if simulation.player.hp > 0:
+                return True
+        return False
 
     def clone(self) -> ArenaEnv:
         return copy.deepcopy(self)
@@ -142,15 +178,7 @@ class ArenaEnv:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
     def _ensure_pickups_reachable(self) -> None:
-        reachable = {self.player.position}
-        frontier = [self.player.position]
-        while frontier:
-            position = frontier.pop()
-            for direction in DIRECTIONS:
-                target = self.add(position, direction)
-                if self.in_bounds(target) and target not in self.walls and target not in reachable:
-                    reachable.add(target)
-                    frontier.append(target)
+        reachable = self._reachable_cells()
         pickup_sets = (self.bow_pickups, self.pistol_pickups, self.arrow_bundles, self.energy_cells)
         occupied = ({self.player.position} | self.walls | self.gems | self.fires | self.medkits |
                     {enemy.position for enemy in self.enemies} | set().union(*pickup_sets))
@@ -187,6 +215,10 @@ class ArenaEnv:
                 ranged.append((pistol_target[1], Action(f"shoot_pistol_{direction}")))
         if self.player.medkits and self.player.hp < 100:
             actions.append(Action.HEAL)
+        if (not self.player.cooldowns.get("emp", 0) and
+                any(self._distance(self.player.position, enemy.position) <= self.config.emp_radius
+                    for enemy in self.enemies)):
+            actions.append(Action.EMP)
         ranged.sort(key=lambda item: item[0])
         actions.extend(action for _, action in ranged[:max(0, 11 - len(actions))])
         actions.append(Action.WAIT)
@@ -237,6 +269,13 @@ class ArenaEnv:
             self.player.medkits -= 1
             self.player.hp = min(100, self.player.hp + self.config.heal_amount)
             events.append("heal")
+        elif action == Action.EMP:
+            affected = [enemy for enemy in self.enemies
+                        if self._distance(self.player.position, enemy.position) <= self.config.emp_radius]
+            for enemy in affected:
+                enemy.stunned += 1
+            self.player.cooldowns["emp"] = self.config.emp_cooldown
+            events.append(f"emp:{len(affected)}")
 
         if self.player.hp > 0:
             reward += self._resolve_enemy_intents(events)

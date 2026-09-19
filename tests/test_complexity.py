@@ -11,6 +11,7 @@ class ComplexityTests(unittest.TestCase):
                                    medkits=0, enemy_damage=5, charger_ratio=0, bomber_ratio=0))
         env.player.position = (0, 0)
         env.player.hp = 5
+        env.player.cooldowns["emp"] = 99
         env.enemies = [Enemy((0, 1))]
         env._plan_enemy_intents()
         immediate, two_step, gap, entropy = tactical_metrics(env)

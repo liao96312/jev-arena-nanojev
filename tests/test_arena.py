@@ -276,6 +276,18 @@ class ArenaTests(unittest.TestCase):
             pickups = env.bow_pickups | env.pistol_pickups | env.arrow_bundles | env.energy_cells
             self.assertTrue(pickups <= reachable)
 
+    def test_campaign_maps_have_two_exits_and_reachable_gems(self):
+        for level in (1, 5, 10):
+            env = ArenaEnv(campaign_config(level))
+            for seed in range(30):
+                env.reset(seed)
+                exits = sum(env.in_bounds(env.add(env.player.position, direction)) and
+                            env.add(env.player.position, direction) not in env.walls and
+                            not env.enemy_at(env.add(env.player.position, direction))
+                            for direction in ("n", "s", "w", "e"))
+                self.assertGreaterEqual(exits, 2)
+                self.assertTrue(env.gems <= env._reachable_cells())
+
     def test_ranged_candidates_require_visible_target(self):
         env = ArenaEnv(ArenaConfig(width=10, height=3, walls=0, enemies=0, gems=0, fires=0,
                                    medkits=0), PlayerLoadout(True, True, 3, 6))
@@ -333,6 +345,45 @@ class ArenaTests(unittest.TestCase):
                        Enemy((1, 2), enemy_type=EnemyType.BOMBER)]
         env._plan_enemy_intents()
         self.assertEqual(RuleAgent().act(env), Action.DASH_S)
+
+    def test_emp_interrupts_immediate_enemy_action_and_cools_down(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0))
+        env.player.position = (2, 2)
+        env.enemies = [Enemy((2, 1))]
+        env._plan_enemy_intents()
+        self.assertIn(Action.EMP, env.legal_actions())
+        self.assertIn("cd=4", build_candidates(env)["emp"])
+        result = env.step(Action.EMP)
+        self.assertEqual(env.player.hp, 100)
+        self.assertIn("emp:1", result.events)
+        self.assertEqual(env.player.cooldowns["emp"], 4)
+        self.assertNotIn(Action.EMP, env.legal_actions())
+        env.step(Action.WAIT)
+        self.assertEqual(env.player.cooldowns["emp"], 3)
+
+    def test_emp_delays_bomber_explosion(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0))
+        env.player.position = (2, 2)
+        bomber = Enemy((2, 1), enemy_type=EnemyType.BOMBER)
+        env.enemies = [bomber]
+        env._plan_enemy_intents()
+        env.step(Action.EMP)
+        result = env.step(Action.WAIT)
+        self.assertIn(bomber, env.enemies)
+        self.assertNotIn("bomber_explode", result.events)
+
+    def test_rule_uses_emp_when_surrounded_by_blasts(self):
+        env = ArenaEnv(ArenaConfig(width=3, height=3, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0))
+        env.player.position = (1, 1)
+        env.enemies = [Enemy(position, enemy_type=EnemyType.BOMBER)
+                       for position in ((1, 0), (1, 2), (0, 1), (2, 1))]
+        env._plan_enemy_intents()
+        for enemy in env.enemies:
+            enemy.intent.countdown = 1
+        self.assertEqual(RuleAgent().act(env), Action.EMP)
 
     def test_observation_and_candidates_share_immediate_threats(self):
         from arena.observation import encode_state

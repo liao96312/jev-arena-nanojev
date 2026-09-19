@@ -27,6 +27,7 @@ class Action(StrEnum):
     SHOOT_PISTOL_S = "shoot_pistol_s"
     SHOOT_PISTOL_W = "shoot_pistol_w"
     SHOOT_PISTOL_E = "shoot_pistol_e"
+    EMP = "emp"
     HEAL = "heal"
     WAIT = "wait"
 
@@ -68,7 +69,7 @@ class Player:
     position: tuple[int, int]
     hp: int = 100
     medkits: int = 0
-    cooldowns: dict[str, int] = field(default_factory=lambda: {"dash": 0})
+    cooldowns: dict[str, int] = field(default_factory=lambda: {"dash": 0, "emp": 0})
     loadout: PlayerLoadout = field(default_factory=PlayerLoadout)
 
 

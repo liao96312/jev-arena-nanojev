@@ -493,7 +493,7 @@ Bomber 是解决“怪越多越死局”的重要设计。
 - [ ] 每种敌人独立 HP / damage / cooldown
 - [x] 地图生成保持敌人组成合理
 - [x] Renderer 不同图标
-- [ ] Observation 标明 enemy_type
+- [x] Observation 标明 enemy_type
 - [x] enemy-friendly-fire 测试
 
 ---
@@ -609,7 +609,7 @@ class Player:
 - [x] Player cooldown 数据结构
 - [x] 每回合 cooldown tick
 - [x] Dash 合法性判断
-- [ ] EMP 范围计算
+- [x] EMP 范围计算
 - [x] Candidate 描述剩余 CD
 - [x] Observation 输出 CD
 - [x] Renderer 显示技能状态
@@ -1314,7 +1314,7 @@ TODO：
 - [x] Bomber
 - [x] friendly fire
 - [x] intent renderer
-- [ ] tests
+- [x] tests
 
 验收：
 
@@ -1329,7 +1329,7 @@ TODO：
 TODO：
 
 - [x] Dash
-- [ ] EMP
+- [x] EMP
 - [x] Cooldown
 - [x] Dynamic Candidates
 - [x] skill UI
@@ -1367,8 +1367,8 @@ TODO：
 - [ ] Barrel
 - [ ] Spike
 - [ ] Pit
-- [ ] map solver
-- [ ] dead-map regeneration
+- [x] map solver
+- [x] dead-map regeneration
 
 验收：
 
@@ -1774,11 +1774,11 @@ NanoJev 很快，但能力有限。
 - [x] Archer
 - [x] 不同敌人移动节奏
 - [x] 玩家持久远程武器与有限弹药
-- [ ] EMP
+- [x] EMP
 - [x] Cooldown
 - [ ] 2 AP
 - [ ] Barrel
-- [ ] Map solvability check
+- [x] Map solvability check
 - [ ] Dataset V2
 - [ ] NanoJev V2 smoke train
 

@@ -52,6 +52,7 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
         Action.SHOOT_PISTOL_S: "Pistol S",
         Action.SHOOT_PISTOL_W: "Pistol W",
         Action.SHOOT_PISTOL_E: "Pistol E",
+        Action.EMP: "EMP nearby; stun=1; cd=4",
         Action.HEAL: "Use medkit",
         Action.WAIT: "Wait",
     }
