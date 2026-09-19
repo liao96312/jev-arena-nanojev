@@ -62,6 +62,8 @@ class ArenaRenderer:
             self._sprite(position, "wall")
         for position in env.fires:
             self._sprite(position, "fire")
+        for position in env.barrels:
+            self._sprite(position, "barrel")
         for position in env.gems:
             self._sprite(position, "gem")
         for position in env.medkits:
@@ -147,7 +149,7 @@ class ArenaRenderer:
         sprites = {}
         for name in ("player", "enemy_chaser", "enemy_charger", "enemy_bomber", "enemy_archer",
                      "gem", "fire", "medkit", "wall", "item_bow", "item_pulse_pistol",
-                     "ammo_arrows", "ammo_energy_cell"):
+                     "ammo_arrows", "ammo_energy_cell", "barrel"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -239,6 +241,7 @@ class ArenaRenderer:
             elif event.startswith("shove:"): labels.append("推动敌人")
             elif event.startswith("enemy_collision:"): labels.append("敌人碰撞")
             elif event == "bomber_explode": labels.append("炸弹怪爆炸！")
+            elif event == "barrel_explode": labels.append("爆炸桶连锁爆炸！")
             elif event.startswith("archer_shot:"): labels.append("射手放箭！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")

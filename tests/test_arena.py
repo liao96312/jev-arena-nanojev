@@ -283,6 +283,7 @@ class ArenaTests(unittest.TestCase):
                 env.reset(seed)
                 exits = sum(env.in_bounds(env.add(env.player.position, direction)) and
                             env.add(env.player.position, direction) not in env.walls and
+                            env.add(env.player.position, direction) not in env.barrels and
                             not env.enemy_at(env.add(env.player.position, direction))
                             for direction in ("n", "s", "w", "e"))
                 self.assertGreaterEqual(exits, 2)
@@ -306,6 +307,34 @@ class ArenaTests(unittest.TestCase):
         env.enemies = [Enemy((5, 2)), Enemy((8, 5)), Enemy((5, 8)), Enemy((2, 5))]
         env._plan_enemy_intents()
         self.assertLessEqual(len(env.legal_actions()), 12)
+
+    def test_barrels_chain_and_damage_nearby_enemy(self):
+        env = ArenaEnv(ArenaConfig(width=7, height=3, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, barrel_damage=20))
+        env.player.position = (1, 1)
+        env.barrels = {(2, 1), (3, 1)}
+        victim = Enemy((4, 1), hp=20, stunned=2)
+        env.enemies = [victim]
+        env._plan_enemy_intents()
+        result = env.step(Action.ATTACK_E)
+        self.assertFalse(env.barrels)
+        self.assertNotIn(victim, env.enemies)
+        self.assertEqual(result.events.count("barrel_explode"), 2)
+        self.assertEqual(env.environment_kills, 1)
+
+    def test_pistol_can_detonate_barrel_before_enemy(self):
+        env = ArenaEnv(ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0), PlayerLoadout(pistol=True, energy=2))
+        env.player.position = (1, 1)
+        env.barrels = {(4, 1)}
+        victim = Enemy((5, 1), hp=20, stunned=2)
+        env.enemies = [victim]
+        env._plan_enemy_intents()
+        self.assertIn(Action.SHOOT_PISTOL_E, env.legal_actions())
+        self.assertIn("barrel/3 blast", build_candidates(env)["shoot_pistol_e"])
+        env.step(Action.SHOOT_PISTOL_E)
+        self.assertNotIn(victim, env.enemies)
+        self.assertEqual(env.player.loadout.energy, 1)
 
     def test_dash_moves_two_cells_and_ticks_cooldown(self):
         env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,

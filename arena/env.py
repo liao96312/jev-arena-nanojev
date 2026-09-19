@@ -16,6 +16,7 @@ class ArenaConfig:
     enemies: int = 3
     gems: int = 6
     fires: int = 10
+    barrels: int = 0
     medkits: int = 2
     bow_pickups: int = 0
     pistol_pickups: int = 0
@@ -43,6 +44,8 @@ class ArenaConfig:
     dash_cooldown: int = 3
     emp_cooldown: int = 4
     emp_radius: int = 1
+    barrel_damage: int = 20
+    barrel_radius: int = 1
     finish_on_all_gems: bool = False
 
 
@@ -55,6 +58,7 @@ def campaign_config(level: int) -> ArenaConfig:
         enemies=min(8, 1 + (level + 1) // 2),
         gems=min(8, 2 + (level + 1) // 2),
         fires=min(24, 4 + level * 2),
+        barrels=min(4, level // 2),
         medkits=max(1, 3 - level // 3),
         bow_pickups=1 if level == 1 else 0,
         pistol_pickups=1 if level == 3 else 0,
@@ -107,7 +111,7 @@ class ArenaEnv:
     def _generate_map(self) -> None:
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
-        needed = (1 + self.config.walls + self.config.enemies + self.config.gems + self.config.fires +
+        needed = (1 + self.config.walls + self.config.enemies + self.config.gems + self.config.fires + self.config.barrels +
                   self.config.medkits + self.config.bow_pickups + self.config.pistol_pickups +
                   self.config.arrow_bundles + self.config.energy_cells)
         if needed > len(cells):
@@ -128,6 +132,7 @@ class ArenaEnv:
             self.enemies.append(Enemy(next(take), enemy_type=enemy_type))
         self.gems = {next(take) for _ in range(self.config.gems)}
         self.fires = {next(take) for _ in range(self.config.fires)}
+        self.barrels = {next(take) for _ in range(self.config.barrels)}
         self.medkits = {next(take) for _ in range(self.config.medkits)}
         self.bow_pickups = {next(take) for _ in range(self.config.bow_pickups)}
         self.pistol_pickups = {next(take) for _ in range(self.config.pistol_pickups)}
@@ -152,6 +157,7 @@ class ArenaEnv:
                              for direction in DIRECTIONS)
         exits = sum(self.in_bounds(self.add(self.player.position, direction)) and
                     self.add(self.player.position, direction) not in self.walls and
+                    self.add(self.player.position, direction) not in self.barrels and
                     not self.enemy_at(self.add(self.player.position, direction))
                     for direction in DIRECTIONS)
         if exits < min(2, possible_exits) or not self.gems <= self._reachable_cells():
@@ -180,7 +186,7 @@ class ArenaEnv:
     def _ensure_pickups_reachable(self) -> None:
         reachable = self._reachable_cells()
         pickup_sets = (self.bow_pickups, self.pistol_pickups, self.arrow_bundles, self.energy_cells)
-        occupied = ({self.player.position} | self.walls | self.gems | self.fires | self.medkits |
+        occupied = ({self.player.position} | self.walls | self.gems | self.fires | self.barrels | self.medkits |
                     {enemy.position for enemy in self.enemies} | set().union(*pickup_sets))
         free = sorted(reachable - occupied, key=lambda p: self._distance(self.player.position, p))
         for pickups in pickup_sets:
@@ -195,24 +201,26 @@ class ArenaEnv:
         ranged: list[tuple[int, Action]] = []
         for direction in DIRECTIONS:
             target = self.add(self.player.position, direction)
-            if self.in_bounds(target) and target not in self.walls and not self.enemy_at(target):
+            if (self.in_bounds(target) and target not in self.walls and target not in self.barrels and
+                    not self.enemy_at(target)):
                 actions.append(Action(f"move_{direction}"))
-            if self.enemy_at(target):
+            if self.enemy_at(target) or target in self.barrels:
                 actions.append(Action(f"attack_{direction}"))
+            if self.enemy_at(target):
                 if self.in_bounds(self.add(target, direction)):
                     actions.append(Action(f"shove_{direction}"))
             destination = self.add(target, direction)
             if (not self.player.cooldowns.get("dash", 0) and self.in_bounds(target) and
                     self.in_bounds(destination) and target not in self.walls and destination not in self.walls and
+                    target not in self.barrels and destination not in self.barrels and
                     not self.enemy_at(target) and not self.enemy_at(destination)):
                 actions.append(Action(f"dash_{direction}"))
-            bow_target = self._ray_target(self.player.position, direction, self.config.bow_range)
-            pistol_target = self._ray_target(self.player.position, direction, self.config.pistol_range)
-            if self.player.loadout.bow and self.player.loadout.arrows and bow_target and bow_target[1] > 1:
-                ranged.append((bow_target[1], Action(f"shoot_bow_{direction}")))
-            if (self.player.loadout.pistol and self.player.loadout.energy and pistol_target and
-                    pistol_target[1] > 1):
-                ranged.append((pistol_target[1], Action(f"shoot_pistol_{direction}")))
+            bow_distance = self._ranged_target_distance(direction, self.config.bow_range)
+            pistol_distance = self._ranged_target_distance(direction, self.config.pistol_range)
+            if self.player.loadout.bow and self.player.loadout.arrows and bow_distance and bow_distance > 1:
+                ranged.append((bow_distance, Action(f"shoot_bow_{direction}")))
+            if self.player.loadout.pistol and self.player.loadout.energy and pistol_distance and pistol_distance > 1:
+                ranged.append((pistol_distance, Action(f"shoot_pistol_{direction}")))
         if self.player.medkits and self.player.hp < 100:
             actions.append(Action.HEAL)
         if (not self.player.cooldowns.get("emp", 0) and
@@ -253,10 +261,14 @@ class ArenaEnv:
                 if position in self.fires:
                     reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
         elif action.value.startswith("attack_"):
-            enemy = self.enemy_at(self.add(self.player.position, action.value[-1]))
-            assert enemy is not None
+            target = self.add(self.player.position, action.value[-1])
             events.append("attack")
-            reward += self._damage_entity(enemy, self.config.attack_damage, events, "attack")
+            if target in self.barrels:
+                reward += self._explode_barrel(target, events)
+            else:
+                enemy = self.enemy_at(target)
+                assert enemy is not None
+                reward += self._damage_entity(enemy, self.config.attack_damage, events, "attack")
         elif action.value.startswith("shove_"):
             direction = action.value[-1]
             enemy = self.enemy_at(self.add(self.player.position, direction))
@@ -365,6 +377,22 @@ class ArenaEnv:
                 return enemy, distance
         return None
 
+    def _barrel_target(self, origin: tuple[int, int], direction: str, range_: int) -> tuple[tuple[int, int], int] | None:
+        target = origin
+        for distance in range(1, range_ + 1):
+            target = self.add(target, direction)
+            if not self.in_bounds(target) or target in self.walls or self.enemy_at(target):
+                return None
+            if target in self.barrels:
+                return target, distance
+        return None
+
+    def _ranged_target_distance(self, direction: str, range_: int) -> int | None:
+        enemy = self._ray_target(self.player.position, direction, range_)
+        barrel = self._barrel_target(self.player.position, direction, range_)
+        distances = [target[1] for target in (enemy, barrel) if target]
+        return min(distances) if distances else None
+
     def _player_shoot(self, weapon: str, direction: str, events: list[str]) -> float:
         loadout = self.player.loadout
         if weapon == "bow":
@@ -373,10 +401,13 @@ class ArenaEnv:
         else:
             loadout.energy -= 1
             damage, range_ = self.config.pistol_damage, self.config.pistol_range
-        target = self._ray_target(self.player.position, direction, range_)
-        assert target is not None
-        enemy, _ = target
+        enemy_target = self._ray_target(self.player.position, direction, range_)
+        barrel_target = self._barrel_target(self.player.position, direction, range_)
         events.append(f"shoot_{weapon}:{direction}")
+        if barrel_target and (not enemy_target or barrel_target[1] < enemy_target[1]):
+            return self._explode_barrel(barrel_target[0], events)
+        assert enemy_target is not None
+        enemy, _ = enemy_target
         reward = self._damage_entity(enemy, damage, events, weapon)
         if weapon == "bow" and enemy in self.enemies:
             reward += self._push_entity(enemy, direction, events)
@@ -393,6 +424,8 @@ class ArenaEnv:
             if enemy in self.enemies:
                 reward += self._damage_entity(enemy, self.config.collision_damage, events, "collision")
             return reward
+        if destination in self.barrels:
+            return self._explode_barrel(destination, events)
         enemy.position = destination
         if destination in self.fires:
             return self._damage_entity(enemy, self.config.fire_damage, events, "fire")
@@ -430,7 +463,7 @@ class ArenaEnv:
             directions = []
             for direction in DIRECTIONS:
                 target = self.add(enemy.position, direction)
-                if (self.in_bounds(target) and target not in self.walls and target not in occupied and
+                if (self.in_bounds(target) and target not in self.walls and target not in self.barrels and target not in occupied and
                         target != self.player.position and
                         self._distance(target, self.player.position) < distance):
                     directions.append(direction)
@@ -462,7 +495,7 @@ class ArenaEnv:
                     events.append("enemy_melee")
             elif intent.kind == IntentType.MOVE and intent.direction:
                 target = self.add(enemy.position, intent.direction)
-                if (self.in_bounds(target) and target not in self.walls and target not in occupied and
+                if (self.in_bounds(target) and target not in self.walls and target not in self.barrels and target not in occupied and
                         target != self.player.position):
                     occupied.remove(enemy.position)
                     enemy.position = target
@@ -485,6 +518,27 @@ class ArenaEnv:
             self._plan_enemy_intents(resolved)
         return reward
 
+    def _explode_barrel(self, center: tuple[int, int], events: list[str]) -> float:
+        if center not in self.barrels:
+            return 0.0
+        self.barrels.remove(center)
+        events.append("barrel_explode")
+        reward = 0.0
+        if self._distance(center, self.player.position) <= self.config.barrel_radius:
+            reward += self._damage_entity(self.player, self.config.barrel_damage, events, "barrel")
+        for enemy in list(self.enemies):
+            if enemy not in self.enemies:
+                continue
+            if self._distance(center, enemy.position) <= self.config.barrel_radius:
+                if enemy.enemy_type == EnemyType.BOMBER:
+                    reward += self._resolve_explosion(enemy, self.config.bomber_damage, events)
+                else:
+                    reward += self._damage_entity(enemy, self.config.barrel_damage, events, "barrel")
+        for barrel in list(self.barrels):
+            if self._distance(center, barrel) <= self.config.barrel_radius:
+                reward += self._explode_barrel(barrel, events)
+        return reward
+
     def _clear_shot_to_player(self, origin: tuple[int, int], direction: str) -> bool:
         target = origin
         while True:
@@ -503,6 +557,9 @@ class ArenaEnv:
             if not self.in_bounds(target) or target in self.walls:
                 events.append("shot_blocked")
                 return 0.0
+            if target in self.barrels:
+                events.append("archer_barrel_hit")
+                return self._explode_barrel(target, events)
             victim = self.enemy_at(target)
             if victim:
                 reward = self._damage_entity(victim, damage, events, "shot")
@@ -520,8 +577,13 @@ class ArenaEnv:
         if self._distance(center, self.player.position) <= self.config.bomber_radius:
             reward += self._damage_entity(self.player, damage, events, "explosion")
         for enemy in list(self.enemies):
+            if enemy not in self.enemies:
+                continue
             if self._distance(center, enemy.position) <= self.config.bomber_radius:
                 reward += self._damage_entity(enemy, damage, events, "explosion")
+        for barrel in list(self.barrels):
+            if self._distance(center, barrel) <= self.config.bomber_radius:
+                reward += self._explode_barrel(barrel, events)
         return reward
 
     def _resolve_charge(self, enemy: Enemy, direction: str, occupied: set[tuple[int, int]],
@@ -531,6 +593,9 @@ class ArenaEnv:
             target = self.add(enemy.position, direction)
             if not self.in_bounds(target) or target in self.walls:
                 events.append("charge_blocked")
+                break
+            if target in self.barrels:
+                reward += self._explode_barrel(target, events)
                 break
             victim = self.enemy_at(target)
             if victim:
@@ -620,6 +685,7 @@ class ArenaEnv:
                                     enemy.stunned) for enemy in self.enemies),
             "gems": tuple(sorted(self.gems)),
             "fires": tuple(sorted(self.fires)),
+            "barrels": tuple(sorted(self.barrels)),
             "medkits": tuple(sorted(self.medkits)),
             "bow_pickups": tuple(sorted(self.bow_pickups)),
             "pistol_pickups": tuple(sorted(self.pistol_pickups)),

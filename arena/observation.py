@@ -55,6 +55,7 @@ def encode_state(env: ArenaEnv) -> str:
     dash_cd = env.player.cooldowns.get("dash", 0)
     emp_cd = env.player.cooldowns.get("emp", 0)
     cooldowns = f"{dash_cd}/{emp_cd}" if emp_cd else str(dash_cd)
+    barrel = f" barrel={_nearest(env.player.position, list(env.barrels))}" if env.barrels else ""
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
         f"cd={cooldowns} last={memory}. "
@@ -62,7 +63,7 @@ def encode_state(env: ArenaEnv) -> str:
         f"Near enemy={_nearest(env.player.position, enemy_positions)} "
         f"gem={_nearest(env.player.position, list(env.gems))} "
         f"kit={_nearest(env.player.position, list(env.medkits))} "
-        f"fire={_nearest(env.player.position, list(env.fires))}. "
+        f"fire={_nearest(env.player.position, list(env.fires))}{barrel}. "
         f"Intent {intents}. "
         f"Immediate threats: {threat_summary}. "
         f"Count enemy={len(env.enemies)} gem={len(env.gems)} kit={env.player.medkits}."

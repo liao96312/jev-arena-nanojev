@@ -25,6 +25,8 @@ Chaser、Charger、Bomber、Archer 均使用 imagegen 生成的独立透明贴�
 敌人进入相邻一格时会动态提供 EMP 动作，可打断近战、冲锋和爆炸，冷却 4 回合。
 Chaser 按基础节奏追击，Charger 普通移动较慢但冲锋更快，Bomber 与 Archer 普通移动再慢一拍。
 地图生成会验证出生点至少两个出口、全部宝石可达且存在立即可存活动作；死图最多重生成 20 次。
+第 2 关起会出现可阻挡移动和射线的爆炸桶；近战、远程武器、冲锋、Archer 或 Bomber
+都能引爆，并对范围内玩家、敌人、Bomber 和其它桶产生连锁伤害。
 RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。

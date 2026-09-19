@@ -1364,7 +1364,7 @@ TODO：
 
 TODO：
 
-- [ ] Barrel
+- [x] Barrel
 - [ ] Spike
 - [ ] Pit
 - [x] map solver
@@ -1777,7 +1777,7 @@ NanoJev 很快，但能力有限。
 - [x] EMP
 - [x] Cooldown
 - [ ] 2 AP
-- [ ] Barrel
+- [x] Barrel
 - [x] Map solvability check
 - [ ] Dataset V2
 - [ ] NanoJev V2 smoke train

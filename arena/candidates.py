@@ -32,10 +32,10 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
         Action.MOVE_S: "Move S",
         Action.MOVE_W: "Move W",
         Action.MOVE_E: "Move E",
-        Action.ATTACK_N: "Attack N enemy",
-        Action.ATTACK_S: "Attack S enemy",
-        Action.ATTACK_W: "Attack W enemy",
-        Action.ATTACK_E: "Attack E enemy",
+        Action.ATTACK_N: "Attack N",
+        Action.ATTACK_S: "Attack S",
+        Action.ATTACK_W: "Attack W",
+        Action.ATTACK_E: "Attack E",
         Action.SHOVE_N: "Shove N enemy",
         Action.SHOVE_S: "Shove S enemy",
         Action.SHOVE_W: "Shove W enemy",
@@ -59,7 +59,10 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
     candidates = {}
     for action in env.legal_actions():
         description = descriptions[action]
-        if action.value.startswith("move_"):
+        if action.value.startswith("attack_"):
+            target = env.add(env.player.position, action.value[-1])
+            description += "; barrel blast" if target in env.barrels else "; enemy"
+        elif action.value.startswith("move_"):
             target = env.add(env.player.position, action.value[-1])
             if target in env.fires:
                 description += "; fire"
@@ -101,11 +104,16 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
         elif action.value.startswith("shoot_"):
             weapon = "bow" if action.value.startswith("shoot_bow_") else "pistol"
             range_ = env.config.bow_range if weapon == "bow" else env.config.pistol_range
-            enemy, distance = env._ray_target(env.player.position, action.value[-1], range_)
-            damage = env.config.bow_damage if weapon == "bow" else env.config.pistol_damage
-            description += f"; {enemy.enemy_type.value}/{distance} hp {enemy.hp}->{max(0, enemy.hp - damage)}"
-            if weapon == "bow" and enemy.hp > damage:
-                description += "; push=1"
+            enemy_target = env._ray_target(env.player.position, action.value[-1], range_)
+            barrel_target = env._barrel_target(env.player.position, action.value[-1], range_)
+            if barrel_target and (not enemy_target or barrel_target[1] < enemy_target[1]):
+                description += f"; barrel/{barrel_target[1]} blast"
+            else:
+                enemy, distance = enemy_target
+                damage = env.config.bow_damage if weapon == "bow" else env.config.pistol_damage
+                description += f"; {enemy.enemy_type.value}/{distance} hp {enemy.hp}->{max(0, enemy.hp - damage)}"
+                if weapon == "bow" and enemy.hp > damage:
+                    description += "; push=1"
         consequence = _immediate_consequence(env, action)
         candidates[action.value] = description + ("; immediate: " + consequence if consequence else "")
     return candidates
