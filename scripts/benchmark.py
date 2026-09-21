@@ -3,12 +3,13 @@ import csv
 import math
 import statistics
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agents import NanoJevAgent, RandomAgent, RuleAgent
-from arena import ArenaConfig, ArenaEnv
+from arena import ArenaConfig, ArenaEnv, campaign_config
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -16,10 +17,11 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[round((len(ordered) - 1) * fraction)] if ordered else 0.0
 
 
-def run(agent_name: str, episodes: int, max_ticks: int = 500) -> list[dict]:
+def run(agent_name: str, episodes: int, max_ticks: int = 500, campaign_level: int = 0) -> list[dict]:
     rows = []
     for seed in range(episodes):
-        env = ArenaEnv(ArenaConfig(max_ticks=max_ticks))
+        config = replace(campaign_config(campaign_level), max_ticks=max_ticks) if campaign_level else ArenaConfig(max_ticks=max_ticks)
+        env = ArenaEnv(config)
         env.reset(seed)
         agent = RandomAgent(seed) if agent_name == "random" else RuleAgent()
         reward = 0.0
@@ -34,8 +36,9 @@ def run(agent_name: str, episodes: int, max_ticks: int = 500) -> list[dict]:
 
 
 def run_nanojev(episodes: int, max_ticks: int = 500, policy: str = "hybrid",
-                max_batch_states: int = 1) -> list[dict]:
-    envs = [ArenaEnv(ArenaConfig(max_ticks=max_ticks)) for _ in range(episodes)]
+                max_batch_states: int = 1, campaign_level: int = 0) -> list[dict]:
+    config = replace(campaign_config(campaign_level), max_ticks=max_ticks) if campaign_level else ArenaConfig(max_ticks=max_ticks)
+    envs = [ArenaEnv(config) for _ in range(episodes)]
     for seed, env in enumerate(envs):
         env.reset(seed)
     agent, rewards = NanoJevAgent(policy_mode=policy, max_batch_states=max_batch_states), [0.0] * episodes
@@ -72,11 +75,14 @@ def main() -> None:
     parser.add_argument("--agents", nargs="+", choices=("random", "rule", "nanojev"), default=("random", "rule"))
     parser.add_argument("--policy", choices=("model", "memory", "hybrid"), default="hybrid")
     parser.add_argument("--max-batch-states", type=int, default=1)
+    parser.add_argument("--campaign-level", type=int, default=0)
     parser.add_argument("--csv", type=Path)
     args = parser.parse_args()
     rows = []
     for name in args.agents:
-        rows += run_nanojev(args.episodes, args.max_ticks, args.policy, args.max_batch_states) if name == "nanojev" else run(name, args.episodes, args.max_ticks)
+        rows += (run_nanojev(args.episodes, args.max_ticks, args.policy, args.max_batch_states,
+                             args.campaign_level) if name == "nanojev" else
+                 run(name, args.episodes, args.max_ticks, args.campaign_level))
     for name in args.agents:
         label = f"nanojev_{args.policy}" if name == "nanojev" else name
         own = [row for row in rows if row["agent"] == label]

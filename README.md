@@ -44,6 +44,9 @@ pre-AP 数据在 GTX 1660S 上的 50-step head-only 烟测将 dev CE 从 2.5932 
 2 AP 数据的对应烟测将 dev CE 从 2.5745 降至 2.1137，test/OOD CE 为 2.1486/2.1545，
 峰值显存 2.53GB；完整指标见
 [`nanojev_v2_ap_smoke_50step.json`](baselines/v2/nanojev_v2_ap_smoke_50step.json)。
+真实第 3 关 4×100 行动 smoke benchmark 中，hybrid 4/4 局收齐宝石且 0 死亡；纯模型策略
+0 宝石并频繁折返，说明目前仍需要 planner 导航。结果见
+[`nanojev_ap_benchmark_4x100.json`](baselines/v2/nanojev_ap_benchmark_4x100.json)，正式 benchmark 暂不勾选。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 
@@ -90,6 +93,8 @@ git clone --branch jev-arena-1660s https://github.com/liao96312/NanoJev.git thir
 python -m unittest discover -s tests -v
 python scripts/benchmark.py --episodes 100
 python scripts/benchmark.py --episodes 4 --max-ticks 100 --agents nanojev --policy hybrid
+python scripts/benchmark.py --episodes 4 --max-ticks 100 --agents nanojev --policy hybrid `
+  --campaign-level 3 --max-batch-states 2
 python scripts/play.py --agent rule --seed 1
 python scripts/play.py --agent nanojev --seed 1
 python scripts/play_gui.py --agent nanojev --seed 61005
@@ -119,11 +124,11 @@ NanoJev 本地服务（GTX 1660S 使用 FP32）：
 ```powershell
 cd third_party/NanoJev
 ..\..\.venv\Scripts\python.exe scripts\serve_decisions.py `
-  --checkpoint-dir ..\..\runs\arena_rollout_memory_head_50step `
+  --checkpoint-dir ..\..\runs\arena_v2_ap_smoke_head_50step `
   --web-root web --host 127.0.0.1 --port 8765 --precision fp32
 ```
 
-上面是当前 Arena 实测最好的 checkpoint；上游原始 checkpoint 位于
+启动器会优先使用上面的 2 AP checkpoint，缺失时回退到旧训练模型，再回退到上游原始模型。上游原始 checkpoint 位于
 `checkpoints/NanoJev/variants/games_gold_seed17`。
 
 下载游戏 checkpoint：

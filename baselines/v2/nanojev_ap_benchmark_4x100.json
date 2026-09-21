@@ -1,0 +1,29 @@
+{
+  "checkpoint": "runs/arena_v2_ap_smoke_head_50step",
+  "campaign_level": 3,
+  "episodes": 4,
+  "max_ticks": 100,
+  "hybrid": {
+    "mean_reward": 65.2625,
+    "mean_ticks": 35.75,
+    "gems": 16,
+    "kills": 0,
+    "deaths": 0,
+    "two_step_backtracks": 1,
+    "mean_p95_ms": 1289.52525
+  },
+  "model": {
+    "mean_reward": 4.95,
+    "mean_ticks": 100.0,
+    "gems": 0,
+    "kills": 2,
+    "deaths": 0,
+    "two_step_backtracks": 168,
+    "mean_p95_ms": 1205.0665
+  },
+  "assessment": "Hybrid completed all four levels; pure model failed to collect a gem and still requires planner guidance.",
+  "commands": [
+    "python scripts/benchmark.py --episodes 4 --max-ticks 100 --agents nanojev --policy hybrid --max-batch-states 2 --campaign-level 3",
+    "python scripts/benchmark.py --episodes 4 --max-ticks 100 --agents nanojev --policy model --max-batch-states 2 --campaign-level 3"
+  ]
+}

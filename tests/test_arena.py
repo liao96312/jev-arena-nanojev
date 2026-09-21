@@ -68,6 +68,7 @@ class ArenaTests(unittest.TestCase):
         self.assertLess(first.enemies, fifth.enemies)
         self.assertLess(first.fires, fifth.fires)
         self.assertGreater(first.medkits, fifth.medkits)
+        self.assertEqual((first.action_points, fifth.action_points), (2, 2))
 
     def test_collecting_last_campaign_gem_completes_level(self):
         env = ArenaEnv(ArenaConfig(width=3, height=3, walls=0, enemies=0, gems=1, fires=0,
