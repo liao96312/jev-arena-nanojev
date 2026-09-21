@@ -157,7 +157,15 @@ V2 10k smoke train 使用相同冻结骨干配置，但需将输入换为
 `datasets\generated\arena_v2_rollout_10k.jsonl`，并设置
 `--max-microbatch-tokens 4096 --eval-every 50` 以容纳完整武器候选集合、避免重复全量评估。
 
-可复现的 500-step 配置：
+当前 V2 规则的 100k 数据生成、校验、token 审计和 500-step 训练可一次启动：
+
+```powershell
+.\configs\train_nanojev_1660s_v2_100k.ps1
+```
+
+脚本先写入 `runs` 中的临时数据，完整生成后才移动到正式数据路径，训练中断不会留下伪装成完整数据集的文件。
+
+可复现的旧版 500-step 配置：
 
 ```powershell
 .\configs\train_nanojev_1660s_500step.ps1

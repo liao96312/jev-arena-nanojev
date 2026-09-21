@@ -1,0 +1,27 @@
+$ErrorActionPreference = "Stop"
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$python = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$dataset = Join-Path $projectRoot "datasets\generated\arena_v2_rollout_100k.jsonl"
+$partial = Join-Path $projectRoot "runs\arena_v2_rollout_100k.partial.jsonl"
+$manifest = Join-Path $projectRoot "datasets\generated\arena_v2_rollout_100k.manifest.json"
+$checkpoint = Join-Path $projectRoot "runs\arena_v2_100k_head_500step"
+
+if (-not (Test-Path -LiteralPath $dataset)) {
+    & $python (Join-Path $projectRoot "scripts\generate_dataset.py") --v2 --records 100000 `
+        --targets rollout --rollout-horizon 2 --output $partial
+    if ($LASTEXITCODE) { throw "100k 数据生成失败" }
+    Move-Item -LiteralPath $partial -Destination $dataset
+}
+
+& $python (Join-Path $projectRoot "scripts\validate_dataset.py") $dataset --manifest $manifest
+if ($LASTEXITCODE) { throw "100k 数据校验失败" }
+& $python (Join-Path $projectRoot "scripts\audit_tokens.py") $dataset --max-length 192
+if ($LASTEXITCODE) { throw "100k token 审计失败" }
+& $python (Join-Path $projectRoot "third_party\NanoJev\scripts\train_pipeline_decisions.py") `
+    --input $dataset --output-dir $checkpoint `
+    --init-checkpoint (Join-Path $projectRoot "checkpoints\NanoJev\variants\games_gold_seed17") `
+    --objective gold_distribution --loss ce --freeze-backbone --backbone-lr 0 `
+    --head-steps 0 --steps 500 --batch-questions 8 --microbatch-questions 1 `
+    --max-microbatch-tokens 4096 --eval-every 100 --max-length 192 `
+    --head-lr 2e-4 --precision fp32
+if ($LASTEXITCODE) { throw "100k 训练失败" }
