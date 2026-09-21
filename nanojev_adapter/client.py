@@ -27,6 +27,12 @@ class NanoJevClient:
             try:
                 with self.opener.open(request, timeout=self.timeout) as response:
                     return json.load(response)
+            except urllib.error.HTTPError as exc:
+                try:
+                    detail = json.loads(exc.read()).get("error", str(exc))
+                except (json.JSONDecodeError, AttributeError):
+                    detail = str(exc)
+                raise RuntimeError(f"NanoJev request rejected ({exc.code}): {detail}") from exc
             except (urllib.error.URLError, TimeoutError) as exc:
                 last_error = exc
         raise RuntimeError("NanoJev local inference failed after one retry") from last_error

@@ -27,7 +27,7 @@ try {
         Start-Process -FilePath $python `
             -ArgumentList @("scripts\serve_decisions.py", "--checkpoint-dir", $checkpoint,
                             "--web-root", "web", "--host", "127.0.0.1", "--port", "8765",
-                            "--precision", "fp32") `
+                            "--precision", "fp32", "--max-length", "256") `
             -WorkingDirectory $nanoJevRoot -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logRoot "demo_service.stdout.log") `
             -RedirectStandardError (Join-Path $logRoot "demo_service.stderr.log") | Out-Null

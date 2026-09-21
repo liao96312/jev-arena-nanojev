@@ -10,13 +10,16 @@ AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev"}
 ACTION_NAMES = {
     "move_n": "向上移动", "move_s": "向下移动", "move_w": "向左移动", "move_e": "向右移动",
     "attack_n": "向上攻击", "attack_s": "向下攻击", "attack_w": "向左攻击", "attack_e": "向右攻击",
+    "shove_n": "向上推动", "shove_s": "向下推动", "shove_w": "向左推动", "shove_e": "向右推动",
+    "dash_n": "向上冲刺", "dash_s": "向下冲刺", "dash_w": "向左冲刺", "dash_e": "向右冲刺",
     "shoot_bow_n": "向上射箭", "shoot_bow_s": "向下射箭", "shoot_bow_w": "向左射箭", "shoot_bow_e": "向右射箭",
     "shoot_pistol_n": "向上开枪", "shoot_pistol_s": "向下开枪", "shoot_pistol_w": "向左开枪", "shoot_pistol_e": "向右开枪",
-    "emp": "释放 EMP", "heal": "使用药包", "wait": "原地等待", "-": "等待决策",
+    "emp": "释放 EMP", "heal": "使用药包", "wait": "原地等待", "restart": "已重新开始", "-": "等待决策",
 }
 REASON_NAMES = {
     "model_argmax": "模型首选", "backtrack_avoided": "避免折返",
-    "planner_rerank": "规划重排", "planner_route": "最短路导航", "forced": "唯一可选",
+    "planner_rerank": "规划重排", "planner_route": "最短路导航",
+    "survival_heal": "低血量优先治疗", "forced": "唯一可选",
 }
 
 
@@ -42,6 +45,8 @@ class ArenaRenderer:
         font_path = "C:/Windows/Fonts/msyh.ttc"
         self.font = pygame.font.Font(font_path, 22)
         self.small = pygame.font.Font(font_path, 17)
+        self.restart_button = pygame.Rect(self.map_width + self.PANEL - 112,
+                                          self.map_height + 34, 100, 30)
         self.sprites = self._load_sprites()
 
     def draw(self, env: ArenaEnv, agent: str, probabilities: dict[str, float],
@@ -100,11 +105,34 @@ class ArenaRenderer:
                 attack_effect = (env.player.position, (dx, dy), progress)
             elif animated_action.startswith("shoot_"):
                 dx, dy = {"n": (0, -1), "s": (0, 1), "w": (-1, 0), "e": (1, 0)}[animated_action[-1]]
+                shot_event = next((event for event in events
+                                   if event.startswith(animated_action.rsplit("_", 1)[0] + ":")), "")
+                distance = int(shot_event.rsplit(":", 1)[1]) if shot_event else 5
                 self._ranged_effect(env.player.position, (dx, dy), progress,
-                                    animated_action.startswith("shoot_bow_"))
+                                    animated_action.startswith("shoot_bow_"), distance)
         self._sprite(player_position, "player")
+        if animation and animated_action.startswith("dash_"):
+            self._dash_effect(player_position, progress)
         if attack_effect:
             self._attack_effect(*attack_effect)
+        for event in events:
+            if event.startswith("enemy_attack_at:"):
+                parts = event.split(":")
+                start, end = (int(parts[1]), int(parts[2])), (int(parts[3]), int(parts[4]))
+                direction = (end[0] - start[0], end[1] - start[1])
+                self._attack_effect(start, direction, progress, "effect_enemy_claw")
+                continue
+            if event.startswith("explosion_at:"):
+                parts = event.split(":")
+                self._explosion_effect((int(parts[1]), int(parts[2])), progress)
+                continue
+            if not event.startswith("archer_shot:"):
+                continue
+            parts = event.split(":")
+            if len(parts) == 6:
+                self._projectile_effect((int(parts[2]), int(parts[3])),
+                                        (int(parts[4]), int(parts[5])), progress,
+                                        "projectile_enemy_laser", (255, 65, 135))
         self._event_feedback(events)
         if error_message:
             surface = self.font.render(error_message, True, (255, 130, 130))
@@ -121,7 +149,9 @@ class ArenaRenderer:
         if selection_reason:
             self._text(f"决策依据：{REASON_NAMES.get(selection_reason, selection_reason)}", left, 152,
                        colors["muted"], small=True)
-        self._text(f"难度：敌 {env.config.enemies}  火 {env.config.fires}  刺 {env.config.spikes}  坑 {env.config.pits}",
+        speed_tier = 1 + sum(level >= threshold for threshold in (6, 12, 18, 24))
+        self._text(f"难度：敌 {env.config.enemies}  火 {env.config.fires}  刺 {env.config.spikes}  "
+                   f"坑 {env.config.pits}  速度 {speed_tier}阶",
                    left, 174, colors["muted"], small=True)
         dash_cd = env.player.cooldowns.get("dash", 0)
         emp_cd = env.player.cooldowns.get("emp", 0)
@@ -144,9 +174,12 @@ class ArenaRenderer:
                   f"击败 {env.kills}   轮次 {env.round}   AP {env.ap_remaining}/{env.config.action_points}   "
                   f"行动 {env.tick}/{env.config.max_ticks}")
         self._text(status, 12, footer_y, colors["text"])
-        controls = "[1] 随机  [2] 规则  [3] NanoJev  [[ / ]] 调速  [空格] 暂停  [R] 重开  [Esc] 退出"
+        controls = "[1] 随机  [2] 规则  [3] NanoJev  [←/→] 调速  [空格] 暂停  [Esc] 退出"
         self._text(controls + ("  已暂停/结束" if paused else ""), 12, footer_y + 28,
                    colors["muted"], small=True)
+        pg.draw.rect(self.screen, (45, 105, 165), self.restart_button, border_radius=6)
+        label = self.small.render("R / F5 重开", True, colors["text"])
+        self.screen.blit(label, label.get_rect(center=self.restart_button.center))
         pg.display.flip()
 
     def _load_sprites(self) -> dict[str, object]:
@@ -154,11 +187,20 @@ class ArenaRenderer:
         sprites = {}
         for name in ("player", "enemy_chaser", "enemy_charger", "enemy_bomber", "enemy_archer",
                      "gem", "fire", "medkit", "wall", "item_bow", "item_pulse_pistol",
-                     "ammo_arrows", "ammo_energy_cell", "barrel", "spike", "pit"):
+                     "ammo_arrows", "ammo_energy_cell", "barrel", "spike", "pit",
+                     "projectile_enemy_laser", "projectile_player_pulse", "projectile_player_arrow",
+                     "effect_player_slash", "effect_enemy_claw"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
-            limit = self.CELL if name == "wall" else self.CELL - 3
+            if name in ("effect_player_slash", "effect_enemy_claw"):
+                limit = round(self.CELL * 1.75)
+            elif name == "projectile_enemy_laser":
+                limit = round(self.CELL * 1.8)
+            elif name in ("projectile_player_pulse", "projectile_player_arrow"):
+                limit = round(self.CELL * 1.35)
+            else:
+                limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
             size = max(1, round(cropped.get_width() * scale)), max(1, round(cropped.get_height() * scale))
             sprites[name] = self.pg.transform.smoothscale(cropped, size)
@@ -169,18 +211,31 @@ class ArenaRenderer:
         center = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + self.CELL // 2)
         self.screen.blit(sprite, sprite.get_rect(center=center))
 
-    def _attack_effect(self, position: tuple[int, int], direction: tuple[int, int], progress: float) -> None:
-        cx = position[0] * self.CELL + self.CELL // 2
-        cy = position[1] * self.CELL + self.CELL // 2
-        dx, dy = direction
-        reach = self.CELL * (0.35 + 0.55 * progress)
-        end = (cx + dx * reach, cy + dy * reach)
-        side = (-dy * 7, dx * 7)
-        self.pg.draw.line(self.screen, (255, 232, 120),
-                          (cx + side[0], cy + side[1]), (end[0] - side[0], end[1] - side[1]),
-                          max(1, round(6 * (1 - progress))))
-        self.pg.draw.circle(self.screen, (255, 170, 70), (round(end[0]), round(end[1])),
-                            max(2, round(7 * (1 - progress))), 2)
+    def _attack_effect(self, position: tuple[int, int], direction: tuple[int, int], progress: float,
+                       sprite_name: str = "effect_player_slash") -> None:
+        angle = 0 if direction[0] > 0 else 180 if direction[0] < 0 else 90 if direction[1] < 0 else -90
+        source = self.sprites[sprite_name]
+        pulse = 0.72 + 0.34 * math.sin(progress * math.pi)
+        size = max(1, round(source.get_width() * pulse)), max(1, round(source.get_height() * pulse))
+        sprite = self.pg.transform.rotate(self.pg.transform.smoothscale(source, size), angle)
+        sprite.set_alpha(max(0, round(255 * min(1, (1 - progress) * 2.8))))
+        center = (round((position[0] + direction[0] * .62) * self.CELL + self.CELL / 2),
+                  round((position[1] + direction[1] * .62) * self.CELL + self.CELL / 2))
+        self.screen.blit(sprite, sprite.get_rect(center=center))
+
+    def _explosion_effect(self, position: tuple[int, int], progress: float) -> None:
+        center = (round(position[0] * self.CELL + self.CELL / 2),
+                  round(position[1] * self.CELL + self.CELL / 2))
+        radius = max(3, round(self.CELL * (0.25 + progress * 1.15)))
+        self.pg.draw.circle(self.screen, (255, 105, 45), center, radius, max(2, round(6 * (1 - progress))))
+        self.pg.draw.circle(self.screen, (255, 225, 90), center, max(2, radius // 2), 2)
+
+    def _dash_effect(self, position: tuple[float, float], progress: float) -> None:
+        center = (round(position[0] * self.CELL + self.CELL / 2),
+                  round(position[1] * self.CELL + self.CELL / 2))
+        radius = round(self.CELL * (.48 + .1 * math.sin(progress * math.pi)))
+        self.pg.draw.circle(self.screen, (105, 245, 255), center, radius, 3)
+        self.pg.draw.circle(self.screen, (235, 255, 255), center, max(3, radius - 5), 1)
 
     def _health_bar(self, position: tuple[float, float], hp: int, maximum: int) -> None:
         x, y = position[0] * self.CELL + 4, (position[1] + 1) * self.CELL - 5
@@ -188,39 +243,82 @@ class ArenaRenderer:
         self.pg.draw.rect(self.screen, (38, 18, 24), (x, y, width, 3))
         self.pg.draw.rect(self.screen, self.COLORS["enemy"], (x, y, round(width * hp / maximum), 3))
 
-    def _ranged_effect(self, position, direction, progress: float, bow: bool) -> None:
+    def _ranged_effect(self, position, direction, progress: float, bow: bool, cells: int) -> None:
         start = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + self.CELL // 2)
-        distance = self.CELL * 5 * min(1, progress * 2)
-        end = (start[0] + direction[0] * distance, start[1] + direction[1] * distance)
-        color = (110, 255, 125) if bow else (80, 220, 255)
-        self.pg.draw.line(self.screen, color, start, end, 3 if bow else 5)
-        self.pg.draw.circle(self.screen, color, (round(end[0]), round(end[1])), 4)
+        destination = (position[0] + direction[0] * cells, position[1] + direction[1] * cells)
+        self._projectile_effect(position, destination, progress,
+                                "projectile_player_arrow" if bow else "projectile_player_pulse",
+                                (110, 255, 125) if bow else (70, 225, 255))
+
+    def _projectile_effect(self, start, end, progress: float, sprite_name: str,
+                           glow: tuple[int, int, int]) -> None:
+        travel = min(1.0, progress * 1.45)
+        x = start[0] + (end[0] - start[0]) * travel
+        y = start[1] + (end[1] - start[1]) * travel
+        center = (round(x * self.CELL + self.CELL / 2), round(y * self.CELL + self.CELL / 2))
+        direction = (end[0] - start[0], end[1] - start[1])
+        angle = 0 if direction[0] > 0 else 180 if direction[0] < 0 else 90 if direction[1] < 0 else -90
+        pulse = 0.92 + 0.12 * math.sin(progress * math.pi)
+        source = self.sprites[sprite_name]
+        size = (max(1, round(source.get_width() * pulse)), max(1, round(source.get_height() * pulse)))
+        sprite = self.pg.transform.rotate(self.pg.transform.smoothscale(source, size), angle)
+        if progress > 0.72:
+            sprite.set_alpha(max(0, round(255 * (1 - progress) / 0.28)))
+        tail = (round(center[0] - direction[0] * self.CELL * 0.32),
+                round(center[1] - direction[1] * self.CELL * 0.32))
+        self.pg.draw.circle(self.screen, glow, tail, max(2, round(5 * (1 - progress * 0.35))), 2)
+        self.screen.blit(sprite, sprite.get_rect(center=center))
+        if progress < 0.22:
+            muzzle = (round(start[0] * self.CELL + self.CELL / 2),
+                      round(start[1] * self.CELL + self.CELL / 2))
+            self.pg.draw.circle(self.screen, glow, muzzle, round(12 * (1 - progress / 0.22)), 2)
+        if progress > 0.68:
+            impact = (round(end[0] * self.CELL + self.CELL / 2),
+                      round(end[1] * self.CELL + self.CELL / 2))
+            radius = max(3, round(4 + 16 * (progress - 0.68) / 0.32))
+            self.pg.draw.circle(self.screen, glow, impact, radius, 2)
 
     def _intent(self, position, intent) -> None:
-        if not intent:
+        if not intent or intent.kind in (IntentType.MOVE, IntentType.WAIT):
             return
-        arrows = {"n": "↑", "s": "↓", "w": "←", "e": "→"}
-        icon = ("⚔" if intent.kind == IntentType.MELEE else
-                "B" if intent.kind == IntentType.EXPLODE else
-                "C" + arrows.get(intent.direction, "·") if intent.kind == IntentType.CHARGE else
-                "A" + arrows.get(intent.direction, "·") if intent.kind == IntentType.SHOOT else
-                arrows.get(intent.direction, "·"))
+        icon = ("!" if intent.kind == IntentType.MELEE else "爆" if intent.kind == IntentType.EXPLODE
+                else "蓄" if intent.kind == IntentType.CHARGE else "瞄")
         color = ((255, 115, 115) if intent.kind == IntentType.MELEE else
                  (235, 100, 255) if intent.kind == IntentType.EXPLODE else
                  (255, 175, 70) if intent.kind == IntentType.CHARGE else (105, 210, 255))
         if intent.kind == IntentType.SHOOT:
             color = (255, 90, 135)
-        label = self.small.render(f"{icon}{intent.countdown}", True, color)
+        label = self.small.render(icon, True, color)
         center = (position[0] * self.CELL + self.CELL // 2, position[1] * self.CELL + 4)
         self.screen.blit(label, label.get_rect(center=center))
 
     def _intent_line(self, env: ArenaEnv, enemy) -> None:
         intent = enemy.intent
-        if not intent or intent.kind != IntentType.SHOOT or not intent.direction:
+        if not intent or intent.kind in (IntentType.MOVE, IntentType.WAIT):
+            return
+        if intent.kind == IntentType.EXPLODE:
+            for y in range(enemy.position[1] - env.config.bomber_radius,
+                           enemy.position[1] + env.config.bomber_radius + 1):
+                for x in range(enemy.position[0] - env.config.bomber_radius,
+                               enemy.position[0] + env.config.bomber_radius + 1):
+                    if env.in_bounds((x, y)) and env._distance(enemy.position, (x, y)) <= env.config.bomber_radius:
+                        self.pg.draw.rect(self.screen, (205, 70, 235),
+                                          self.pg.Rect(x * self.CELL + 3, y * self.CELL + 3,
+                                                       self.CELL - 6, self.CELL - 6), 2, border_radius=5)
+            return
+        if not intent.direction:
+            return
+        if intent.kind == IntentType.MELEE:
+            target = env.add(enemy.position, intent.direction)
+            self.pg.draw.rect(self.screen, (255, 80, 95),
+                              self.pg.Rect(target[0] * self.CELL + 3, target[1] * self.CELL + 3,
+                                           self.CELL - 6, self.CELL - 6), 2, border_radius=5)
             return
         target = enemy.position
         end = target
-        while True:
+        limit = env.config.charger_range if intent.kind == IntentType.CHARGE else max(env.config.width,
+                                                                                     env.config.height)
+        for _ in range(limit):
             target = env.add(target, intent.direction)
             if not env.in_bounds(target) or target in env.walls:
                 break
@@ -230,7 +328,8 @@ class ArenaRenderer:
         start_pixel = (enemy.position[0] * self.CELL + self.CELL // 2,
                        enemy.position[1] * self.CELL + self.CELL // 2)
         end_pixel = (end[0] * self.CELL + self.CELL // 2, end[1] * self.CELL + self.CELL // 2)
-        self.pg.draw.line(self.screen, (255, 90, 135), start_pixel, end_pixel, 3)
+        color = (255, 165, 65) if intent.kind == IntentType.CHARGE else (255, 90, 135)
+        self.pg.draw.line(self.screen, color, start_pixel, end_pixel, 3)
 
     def _event_feedback(self, events: tuple[str, ...]) -> None:
         labels = []
@@ -248,11 +347,13 @@ class ArenaRenderer:
             elif event == "bomber_explode": labels.append("炸弹怪爆炸！")
             elif event == "barrel_explode": labels.append("爆炸桶连锁爆炸！")
             elif event == "pit_fall": labels.append("敌人坠入深坑！")
-            elif event.startswith("archer_shot:"): labels.append("射手放箭！")
+            elif event.startswith("archer_shot:"): labels.append("敌方能量激光！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")
             elif event.startswith("dash:"): labels.append("冲刺！")
+            elif event.startswith("invulnerable:") and "冲刺无敌：免疫伤害" not in labels:
+                labels.append("冲刺无敌：免疫伤害")
             elif event == "heal": labels.append("恢复生命")
             elif event == "level_complete": labels.append("关卡完成！准备进入下一关")
             elif event.startswith("damage:"): labels.append(f"受到 {event.rsplit(':', 1)[1]} 点伤害")

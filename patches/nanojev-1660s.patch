@@ -16,6 +16,18 @@ index 65b2ea5..c9b51e9 100644
              relative=unquote(route).lstrip('/') or 'index.html'
              target=(web_root/relative).resolve()
              if not target.is_relative_to(web_root) or not target.is_file():
+@@ -60,9 +65,9 @@ if __name__=='__main__':
+     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--checkpoint-dir',required=True)
+     p.add_argument('--web-root',default='web');p.add_argument('--host',default='127.0.0.1');p.add_argument('--port',type=int,default=8765)
+-    p.add_argument('--precision',choices=['fp32','bf16'],default='bf16');p.add_argument('--disable-native-triton',action='store_true')
++    p.add_argument('--precision',choices=['fp32','bf16'],default='bf16');p.add_argument('--disable-native-triton',action='store_true');p.add_argument('--max-length',type=int)
+     a=p.parse_args()
+     from predict_toy_decisions import DecisionPredictor
+-    engine=DecisionPredictor(a.checkpoint_dir,precision=a.precision,disable_native_triton=a.disable_native_triton)
++    engine=DecisionPredictor(a.checkpoint_dir,max_length=a.max_length,precision=a.precision,disable_native_triton=a.disable_native_triton)
+     root=Path(a.web_root).resolve()
+     if not (root/'index.html').is_file():raise ValueError('web-root must contain index.html')
+     server=HTTPServer((a.host,a.port),server_class(engine,root))
 diff --git a/scripts/train_pipeline_decisions.py b/scripts/train_pipeline_decisions.py
 index aa20d24..6992e84 100644
 --- a/scripts/train_pipeline_decisions.py

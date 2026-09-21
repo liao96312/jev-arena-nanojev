@@ -5,13 +5,16 @@ from collections import deque
 def _gem_route_actions(env, probabilities: dict[str, float]) -> set[str]:
     moves = {action: env.add(env.player.position, action[-1]) for action in probabilities
              if action.startswith("move_")}
-    blocked = set(env.walls) | set(env.pits) | {enemy.position for enemy in env.enemies}
+    blocked = set(env.walls) | set(env.pits) | set(env.barrels) | {enemy.position for enemy in env.enemies}
+    targets = (env.medkits if env.player.hp <= 60 and env.medkits else
+               ((env.bow_pickups if not env.player.loadout.bow else set()) |
+                (env.pistol_pickups if not env.player.loadout.pistol else set())) or env.gems)
 
     def distance(start: tuple[int, int], avoid_fire: bool) -> int | None:
         queue, seen = deque([(start, 0)]), {start}
         while queue:
             position, steps = queue.popleft()
-            if position in env.gems:
+            if position in targets:
                 return steps
             for direction in ("n", "s", "w", "e"):
                 target = env.add(position, direction)
@@ -43,6 +46,8 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
     argmax = greedy(probabilities)
     if mode == "model":
         return argmax, "model_argmax"
+    if mode == "hybrid" and env.player.hp <= 50 and "heal" in probabilities:
+        return "heal", "survival_heal"
     safe_non_backtracking = [action for action in probabilities if action.startswith("move_") and
                              env.add(env.player.position, action[-1]) != env.previous_player_position and
                              env.add(env.player.position, action[-1]) not in env.fires | env.spikes]
@@ -67,6 +72,8 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
                 value += .6 * (before - after)
         elif mode == "hybrid" and action.startswith("attack_") and env.player.hp > 25:
             value += .4
+        elif mode == "hybrid" and action.startswith("shoot_"):
+            value += 1.5
         elif action == "heal" and env.player.hp <= 40:
             value += 1.0
         elif action == "wait" and env.last_action == "wait" and safe_non_backtracking:
@@ -74,7 +81,8 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(probabilities), key=score)
-    if mode == "hybrid" and env.gems and (chosen.startswith("move_") or chosen == "wait"):
+    needs_medkit = env.player.hp <= 50 and bool(env.medkits)
+    if mode == "hybrid" and env.gems and (chosen.startswith("move_") or chosen == "wait" or needs_medkit):
         routes = _gem_route_actions(env, probabilities)
         if routes:
             routed = max(sorted(routes), key=probabilities.__getitem__)

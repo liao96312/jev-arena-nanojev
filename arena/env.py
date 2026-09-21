@@ -5,12 +5,13 @@ import random
 from collections import deque
 from dataclasses import dataclass
 
-from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, Action, Enemy, EnemyType,
-                       Intent, IntentType, Player, PlayerLoadout)
+from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, ENEMY_SPEED_LEVEL, Action,
+                       Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout)
 
 
 @dataclass(frozen=True)
 class ArenaConfig:
+    difficulty_level: int = 1
     width: int = 20
     height: int = 20
     max_ticks: int = 500
@@ -42,6 +43,7 @@ class ArenaConfig:
     bomber_radius: int = 1
     archer_damage: int = 12
     archer_countdown: int = 2
+    spawn_protection_rounds: int = 0
     bow_damage: int = 15
     bow_range: int = 6
     pistol_damage: int = 12
@@ -61,6 +63,7 @@ def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
     return ArenaConfig(
+        difficulty_level=level,
         max_ticks=min(300, 160 + level * 20),
         walls=min(55, 24 + level * 3),
         enemies=min(8, 1 + (level + 1) // 2),
@@ -70,8 +73,8 @@ def campaign_config(level: int) -> ArenaConfig:
         pits=min(4, max(0, level - 2)),
         barrels=min(4, level // 2),
         medkits=max(1, 3 - level // 3),
-        bow_pickups=1 if level == 1 else 0,
-        pistol_pickups=1 if level == 3 else 0,
+        bow_pickups=1,
+        pistol_pickups=1 if level >= 3 else 0,
         arrow_bundles=1 if level >= 2 else 0,
         energy_cells=1 if level >= 4 else 0,
         enemy_damage=min(12, 4 + (level - 1) // 2),
@@ -80,6 +83,7 @@ def campaign_config(level: int) -> ArenaConfig:
         charger_ratio=min(0.45, 0.2 + level * 0.03),
         bomber_ratio=min(0.25, 0.1 + level * 0.02),
         archer_ratio=min(0.2, 0.08 + level * 0.02),
+        spawn_protection_rounds=2,
         action_points=2,
         finish_on_all_gems=True,
     )
@@ -99,7 +103,7 @@ class ArenaEnv:
         self.reset(0)
 
     def reset(self, seed: int = 0) -> dict:
-        if (self.config.enemy_move_interval < 1 or self.config.charger_range < 1 or
+        if (self.config.difficulty_level < 1 or self.config.enemy_move_interval < 1 or self.config.charger_range < 1 or
                 self.config.archer_countdown < 1 or self.config.action_points < 1 or
                 not 1 <= self.config.dash_ap_cost <= self.config.action_points or
                 not 1 <= self.config.emp_ap_cost <= self.config.action_points):
@@ -158,14 +162,14 @@ class ArenaEnv:
         self._ensure_pickups_reachable()
 
     def _reachable_cells(self) -> set[tuple[int, int]]:
+        blocked = self.walls | self.fires | self.spikes | self.pits | self.barrels
         reachable = {self.player.position}
         frontier = [self.player.position]
         while frontier:
             position = frontier.pop()
             for direction in DIRECTIONS:
                 target = self.add(position, direction)
-                if (self.in_bounds(target) and target not in self.walls and target not in self.pits and
-                        target not in reachable):
+                if self.in_bounds(target) and target not in blocked and target not in reachable:
                     reachable.add(target)
                     frontier.append(target)
         return reachable
@@ -177,9 +181,11 @@ class ArenaEnv:
                     self.add(self.player.position, direction) not in self.walls and
                     self.add(self.player.position, direction) not in self.pits and
                     self.add(self.player.position, direction) not in self.barrels and
+                    self.add(self.player.position, direction) not in self.fires and
+                    self.add(self.player.position, direction) not in self.spikes and
                     not self.enemy_at(self.add(self.player.position, direction))
                     for direction in DIRECTIONS)
-        if exits < min(2, possible_exits) or not self.gems <= self._reachable_cells():
+        if exits < min(2, possible_exits) or not (self.gems | self.medkits) <= self._reachable_cells():
             return False
         for action in self.legal_actions():
             simulation = self.clone()
@@ -269,6 +275,7 @@ class ArenaEnv:
         action = Action(action)
         if action not in self.legal_actions():
             raise ValueError(f"illegal action: {action}")
+        self.player.invulnerable = action.value.startswith("dash_")
         if self.ap_remaining == self.config.action_points:
             self._tick_cooldowns()
         origin = self.player.position
@@ -292,9 +299,9 @@ class ArenaEnv:
             reward += self._collect(events)
             for position in traversed:
                 if position in self.fires:
-                    reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
+                    reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire")
                 if position in self.spikes:
-                    reward += self._damage_entity(self.player, self.config.spike_damage, events, "spike") - 3
+                    reward += self._damage_entity(self.player, self.config.spike_damage, events, "spike")
         elif action.value.startswith("attack_"):
             target = self.add(self.player.position, action.value[-1])
             events.append("attack")
@@ -347,6 +354,7 @@ class ArenaEnv:
             reward += 10
             self.done = True
             events.append("completed")
+        self.player.invulnerable = False
         return StepResult(round(reward, 4), self.done, tuple(events))
 
     def _tick_cooldowns(self) -> None:
@@ -388,6 +396,9 @@ class ArenaEnv:
         return reward
 
     def _damage_entity(self, entity: Player | Enemy, amount: int, events: list[str], source: str) -> float:
+        if entity is self.player and self.player.invulnerable:
+            events.append(f"invulnerable:{source}")
+            return 0.0
         actual = min(amount, entity.hp)
         entity.hp -= actual
         if entity is self.player:
@@ -443,8 +454,13 @@ class ArenaEnv:
             damage, range_ = self.config.pistol_damage, self.config.pistol_range
         enemy_target = self._ray_target(self.player.position, direction, range_)
         barrel_target = self._barrel_target(self.player.position, direction, range_)
-        events.append(f"shoot_{weapon}:{direction}")
-        if barrel_target and (not enemy_target or barrel_target[1] < enemy_target[1]):
+        barrel_first = bool(barrel_target and (not enemy_target or barrel_target[1] < enemy_target[1]))
+        target = barrel_target if barrel_first else enemy_target
+        assert target is not None
+        distance = target[1]
+        events.append(f"shoot_{weapon}:{direction}:{distance}")
+        if barrel_first:
+            assert barrel_target is not None
             return self._explode_barrel(barrel_target[0], events)
         assert enemy_target is not None
         enemy, _ = enemy_target
@@ -489,7 +505,8 @@ class ArenaEnv:
             if distance == 1:
                 direction = next(name for name, delta in DIRECTIONS.items()
                                  if self.add(enemy.position, name) == self.player.position)
-                enemy.intent = Intent(IntentType.MELEE, direction, self._enemy_interval(enemy),
+                enemy.intent = Intent(IntentType.MELEE, direction,
+                                      self.config.enemy_move_interval + ENEMY_MOVE_DELAY[enemy.enemy_type],
                                       max(1, self.config.enemy_damage + ENEMY_MELEE_BONUS[enemy.enemy_type]))
                 continue
             dx = self.player.position[0] - enemy.position[0]
@@ -497,17 +514,21 @@ class ArenaEnv:
             if enemy.enemy_type == EnemyType.CHARGER and (dx == 0 or dy == 0):
                 direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
                 if self._clear_shot_to_player(enemy.position, direction, self.fires | self.spikes):
-                    enemy.intent = Intent(IntentType.CHARGE, direction, self.config.enemy_move_interval,
+                    enemy.intent = Intent(IntentType.CHARGE, direction,
+                                          max(1, self._enemy_move_interval(enemy) - 1),
                                           self.config.charger_damage)
                     continue
-            if enemy.enemy_type == EnemyType.ARCHER and (dx == 0 or dy == 0):
+            if (enemy.enemy_type == EnemyType.ARCHER and self.round > self.config.spawn_protection_rounds
+                    and (dx == 0 or dy == 0)):
                 direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
                 if self._clear_shot_to_player(enemy.position, direction):
-                    enemy.intent = Intent(IntentType.SHOOT, direction, self.config.archer_countdown,
+                    countdown = max(1, self.config.archer_countdown -
+                                    int(self.config.difficulty_level >= ENEMY_SPEED_LEVEL[EnemyType.ARCHER]))
+                    enemy.intent = Intent(IntentType.SHOOT, direction, countdown,
                                           self.config.archer_damage)
                     continue
             direction = self._enemy_path_direction(enemy.position, occupied - {enemy.position})
-            enemy.intent = (Intent(IntentType.MOVE, direction, self._enemy_interval(enemy))
+            enemy.intent = (Intent(IntentType.MOVE, direction, self._enemy_move_interval(enemy))
                             if direction else Intent(IntentType.WAIT))
 
     def _enemy_path_direction(self, start: tuple[int, int], occupied: set[tuple[int, int]]) -> str | None:
@@ -525,8 +546,9 @@ class ArenaEnv:
             queue.extend((self.add(position, direction), first) for direction in DIRECTIONS)
         return None
 
-    def _enemy_interval(self, enemy: Enemy) -> int:
-        return self.config.enemy_move_interval + ENEMY_MOVE_DELAY[enemy.enemy_type]
+    def _enemy_move_interval(self, enemy: Enemy) -> int:
+        speedup = int(self.config.difficulty_level >= ENEMY_SPEED_LEVEL[enemy.enemy_type])
+        return max(1, self.config.enemy_move_interval + ENEMY_MOVE_DELAY[enemy.enemy_type] - speedup)
 
     def _resolve_enemy_intents(self, events: list[str]) -> float:
         reward = 0.0
@@ -548,6 +570,8 @@ class ArenaEnv:
                 if self.add(enemy.position, intent.direction) == self.player.position:
                     reward += self._damage_entity(self.player, intent.power, events, "enemy")
                     events.append("enemy_melee")
+                    events.append(f"enemy_attack_at:{enemy.position[0]}:{enemy.position[1]}:"
+                                  f"{self.player.position[0]}:{self.player.position[1]}")
             elif intent.kind == IntentType.MOVE and intent.direction:
                 target = self.add(enemy.position, intent.direction)
                 if (self.in_bounds(target) and target not in self.walls and target not in self.fires and
@@ -576,6 +600,7 @@ class ArenaEnv:
             return 0.0
         self.barrels.remove(center)
         events.append("barrel_explode")
+        events.append(f"explosion_at:{center[0]}:{center[1]}")
         reward = 0.0
         if self._distance(center, self.player.position) <= self.config.barrel_radius:
             reward += self._damage_entity(self.player, self.config.barrel_damage, events, "barrel")
@@ -604,22 +629,26 @@ class ArenaEnv:
 
     def _resolve_shot(self, archer: Enemy, direction: str, damage: int,
                       events: list[str]) -> float:
+        origin = archer.position
         target = archer.position
-        events.append(f"archer_shot:{direction}")
         while True:
             target = self.add(target, direction)
             if not self.in_bounds(target) or target in self.walls:
+                events.append(f"archer_shot:{direction}:{origin[0]}:{origin[1]}:{target[0]}:{target[1]}")
                 events.append("shot_blocked")
                 return 0.0
             if target in self.barrels:
+                events.append(f"archer_shot:{direction}:{origin[0]}:{origin[1]}:{target[0]}:{target[1]}")
                 events.append("archer_barrel_hit")
                 return self._explode_barrel(target, events)
             victim = self.enemy_at(target)
             if victim:
+                events.append(f"archer_shot:{direction}:{origin[0]}:{origin[1]}:{target[0]}:{target[1]}")
                 reward = self._damage_entity(victim, damage, events, "shot")
                 events.append("archer_friendly_fire")
                 return reward
             if target == self.player.position:
+                events.append(f"archer_shot:{direction}:{origin[0]}:{origin[1]}:{target[0]}:{target[1]}")
                 events.append("archer_hit")
                 return self._damage_entity(self.player, damage, events, "shot")
 
@@ -627,6 +656,7 @@ class ArenaEnv:
         center = bomber.position
         self.enemies.remove(bomber)
         events.append("bomber_explode")
+        events.append(f"explosion_at:{center[0]}:{center[1]}")
         reward = 0.0
         if self._distance(center, self.player.position) <= self.config.bomber_radius:
             reward += self._damage_entity(self.player, damage, events, "explosion")
@@ -670,6 +700,8 @@ class ArenaEnv:
             if target == self.player.position:
                 reward += self._damage_entity(self.player, self.config.charger_damage, events, "charge")
                 events.append("charger_hit")
+                events.append(f"enemy_attack_at:{enemy.position[0]}:{enemy.position[1]}:"
+                              f"{self.player.position[0]}:{self.player.position[1]}")
                 break
             occupied.remove(enemy.position)
             enemy.position = target

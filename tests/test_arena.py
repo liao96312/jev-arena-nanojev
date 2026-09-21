@@ -3,7 +3,7 @@ import unittest
 from agents import RandomAgent, RuleAgent
 from arena import ArenaConfig, ArenaEnv, campaign_config
 from arena.candidates import build_candidates
-from arena.entities import Action, Enemy, EnemyType, IntentType, PlayerLoadout
+from arena.entities import Action, Enemy, EnemyType, Intent, IntentType, PlayerLoadout
 
 
 class ArenaTests(unittest.TestCase):
@@ -310,6 +310,19 @@ class ArenaTests(unittest.TestCase):
         result = env.step(Action.MOVE_N)
         self.assertEqual(env.player.hp, 100)
         self.assertIn("shot_blocked", result.events)
+        self.assertIn("archer_shot:e:1:2:7:2", result.events)
+
+    def test_campaign_archer_cannot_target_player_during_spawn_protection(self):
+        env = ArenaEnv(campaign_config(3))
+        env.player.position = (5, 2)
+        archer = Enemy((1, 2), enemy_type=EnemyType.ARCHER)
+        env.enemies = [archer]
+        env.round = 1
+        env._plan_enemy_intents()
+        self.assertNotEqual(archer.intent.kind, IntentType.SHOOT)
+        env.round = 3
+        env._plan_enemy_intents()
+        self.assertEqual(archer.intent.kind, IntentType.SHOOT)
 
     def test_archer_shot_hits_first_enemy(self):
         env = ArenaEnv(ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0,
@@ -351,6 +364,34 @@ class ArenaTests(unittest.TestCase):
         self.assertEqual((env.enemies[1].intent.kind, env.enemies[1].intent.countdown),
                          (IntentType.CHARGE, 2))
 
+    def test_campaign_enemy_speed_tiers(self):
+        expected = {
+            1: [2, 3, 4, 4],
+            6: [1, 3, 4, 4],
+            12: [1, 2, 4, 4],
+            18: [1, 2, 3, 4],
+            24: [1, 2, 3, 3],
+        }
+        types = (EnemyType.CHASER, EnemyType.CHARGER, EnemyType.ARCHER, EnemyType.BOMBER)
+        for level, intervals in expected.items():
+            env = ArenaEnv(campaign_config(level))
+            self.assertEqual([env._enemy_move_interval(Enemy((0, 0), enemy_type=kind)) for kind in types],
+                             intervals)
+
+        charger_env = ArenaEnv(campaign_config(12))
+        charger_env.player.position = (6, 2)
+        charger = Enemy((2, 2), enemy_type=EnemyType.CHARGER)
+        charger_env.enemies = [charger]
+        charger_env._plan_enemy_intents()
+        self.assertEqual((charger.intent.kind, charger.intent.countdown), (IntentType.CHARGE, 1))
+
+        archer_env = ArenaEnv(campaign_config(18))
+        archer_env.player.position, archer_env.round = (6, 2), 3
+        archer = Enemy((2, 2), enemy_type=EnemyType.ARCHER)
+        archer_env.enemies = [archer]
+        archer_env._plan_enemy_intents()
+        self.assertEqual((archer.intent.kind, archer.intent.countdown), (IntentType.SHOOT, 1))
+
     def test_enemy_types_have_independent_hp_damage_and_cooldown(self):
         env = ArenaEnv(ArenaConfig(width=7, height=7, walls=0, enemies=0, gems=0, fires=0,
                                    medkits=0, enemy_damage=5, enemy_move_interval=2))
@@ -386,9 +427,10 @@ class ArenaTests(unittest.TestCase):
         pistol_env.enemies = [Enemy((3, 1), hp=30, stunned=2)]
         pistol_env.fires = {(4, 1)}
         pistol_env._plan_enemy_intents()
-        pistol_env.step(Action.SHOOT_PISTOL_E)
+        result = pistol_env.step(Action.SHOOT_PISTOL_E)
         self.assertEqual((pistol_env.enemies[0].position, pistol_env.enemies[0].hp), ((3, 1), 18))
         self.assertEqual(pistol_env.player.loadout.energy, 1)
+        self.assertIn("shoot_pistol:e:2", result.events)
 
     def test_weapon_pickup_and_loadout_survive_next_level(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
@@ -416,7 +458,7 @@ class ArenaTests(unittest.TestCase):
             self.assertTrue(pickups <= reachable)
 
     def test_campaign_maps_have_two_exits_and_reachable_gems(self):
-        for level in (1, 5, 10):
+        for level in (1, 5, 10, 13, 20):
             env = ArenaEnv(campaign_config(level))
             for seed in range(30):
                 env.reset(seed)
@@ -427,6 +469,18 @@ class ArenaTests(unittest.TestCase):
                             for direction in ("n", "s", "w", "e"))
                 self.assertGreaterEqual(exits, 2)
                 self.assertTrue(env.gems <= env._reachable_cells())
+                self.assertTrue(env.medkits <= env._reachable_cells())
+
+    def test_campaign_keeps_missing_weapon_pickups_available(self):
+        self.assertEqual(campaign_config(13).bow_pickups, 1)
+        self.assertEqual(campaign_config(13).pistol_pickups, 1)
+
+    def test_weapon_pickup_candidate_reports_acquisition(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0), PlayerLoadout(arrows=12, energy=12))
+        env.player.position = (2, 2)
+        env.bow_pickups = {(3, 2)}
+        self.assertIn("acquire_bow", build_candidates(env)["move_e"])
 
     def test_ranged_candidates_require_visible_target(self):
         env = ArenaEnv(ArenaConfig(width=10, height=3, walls=0, enemies=0, gems=0, fires=0,
@@ -495,6 +549,20 @@ class ArenaTests(unittest.TestCase):
         env.player.position = (1, 2)
         env.walls = {(2, 2)}
         self.assertNotIn(Action.DASH_E, env.legal_actions())
+
+    def test_dash_iframes_ignore_hazards_and_same_action_enemy_hit(self):
+        env = ArenaEnv(ArenaConfig(width=8, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   spikes=0, medkits=0, action_points=1, dash_ap_cost=1))
+        env.player.position = (1, 2)
+        env.fires, env.spikes = {(2, 2)}, {(3, 2)}
+        archer = Enemy((6, 2), enemy_type=EnemyType.ARCHER)
+        archer.intent = Intent(IntentType.SHOOT, "w", 1, 12)
+        env.enemies = [archer]
+        result = env.step(Action.DASH_E)
+        self.assertEqual((env.player.position, env.player.hp, env.player.invulnerable), ((3, 2), 100, False))
+        self.assertIn("invulnerable:fire", result.events)
+        self.assertIn("invulnerable:spike", result.events)
+        self.assertIn("invulnerable:shot", result.events)
 
     def test_rule_uses_environmental_shove(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,

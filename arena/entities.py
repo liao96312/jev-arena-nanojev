@@ -57,6 +57,12 @@ ENEMY_MOVE_DELAY = {
     EnemyType.ARCHER: 2,
     EnemyType.BOMBER: 2,
 }
+ENEMY_SPEED_LEVEL = {
+    EnemyType.CHASER: 6,
+    EnemyType.CHARGER: 12,
+    EnemyType.ARCHER: 18,
+    EnemyType.BOMBER: 24,
+}
 
 
 class IntentType(StrEnum):
@@ -89,6 +95,7 @@ class Player:
     position: tuple[int, int]
     hp: int = 100
     medkits: int = 0
+    invulnerable: bool = False
     cooldowns: dict[str, int] = field(default_factory=lambda: {"dash": 0, "emp": 0})
     loadout: PlayerLoadout = field(default_factory=PlayerLoadout)
 

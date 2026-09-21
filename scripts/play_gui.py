@@ -21,6 +21,32 @@ def decide(agent, env):
             getattr(agent, "last_latency_ms", 0.0), getattr(agent, "last_selection_reason", ""))
 
 
+def keyboard_command(pg, event) -> str:
+    key, typed = event.key, getattr(event, "unicode", "").lower()
+    if key == pg.K_ESCAPE:
+        return "quit"
+    if key == pg.K_SPACE:
+        return "pause"
+    if key in (pg.K_r, pg.K_F5) or typed == "r" or getattr(event, "scancode", -1) == pg.KSCAN_R:
+        return "restart"
+    if key in (pg.K_LEFTBRACKET, pg.K_MINUS, pg.K_KP_MINUS, pg.K_LEFT):
+        return "slower"
+    if key in (pg.K_RIGHTBRACKET, pg.K_EQUALS, pg.K_KP_PLUS, pg.K_RIGHT):
+        return "faster"
+    for number, keys in ((1, (pg.K_1, pg.K_KP1)), (2, (pg.K_2, pg.K_KP2)),
+                         (3, (pg.K_3, pg.K_KP3))):
+        if key in keys or typed == str(number):
+            return f"agent_{number}"
+    return ""
+
+
+def restart_level(env, seed: int, pending):
+    if pending:
+        pending.cancel()
+    env.reset(seed)
+    return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--agent", choices=("random", "rule", "nanojev"), default="rule")
@@ -49,27 +75,28 @@ def main() -> None:
             for event in renderer.pg.event.get():
                 if event.type == renderer.pg.QUIT:
                     running = False
-                elif event.type == renderer.pg.KEYDOWN:
-                    if event.key == renderer.pg.K_ESCAPE:
+                    continue
+                command = (keyboard_command(renderer.pg, event) if event.type == renderer.pg.KEYDOWN else
+                           "restart" if event.type == renderer.pg.MOUSEBUTTONDOWN and event.button == 1
+                           and renderer.restart_button.collidepoint(event.pos) else "")
+                if command:
+                    if command == "quit":
                         running = False
-                    elif event.key == renderer.pg.K_SPACE:
+                    elif command == "pause":
                         paused = not paused
-                    elif event.key in (renderer.pg.K_LEFTBRACKET, renderer.pg.K_MINUS,
-                                       renderer.pg.K_KP_MINUS):
+                    elif command == "slower":
                         decision_ms = min(1000, decision_ms + 50)
-                    elif event.key in (renderer.pg.K_RIGHTBRACKET, renderer.pg.K_EQUALS,
-                                       renderer.pg.K_KP_PLUS):
+                    elif command == "faster":
                         decision_ms = max(80, decision_ms - 50)
-                    elif event.key == renderer.pg.K_r:
-                        env.reset(args.seed + level - 1)
+                    elif command == "restart":
+                        pending = restart_level(env, args.seed + level - 1, pending)
                         agent = make_agent(agent_name, args.seed + level - 1)
                         generation += 1
                         animation, level_advance_at = None, 0
-                        probabilities, action_name, reason, error_message = {}, "-", "", ""
-                        paused = False
-                    elif event.key in (renderer.pg.K_1, renderer.pg.K_2, renderer.pg.K_3):
-                        agent_name = {renderer.pg.K_1: "random", renderer.pg.K_2: "rule",
-                                      renderer.pg.K_3: "nanojev"}[event.key]
+                        probabilities, action_name, reason, error_message = {}, "restart", "", ""
+                        paused, last_step = False, now
+                    elif command.startswith("agent_"):
+                        agent_name = {"agent_1": "random", "agent_2": "rule", "agent_3": "nanojev"}[command]
                         agent = make_agent(agent_name, args.seed)
                         generation += 1
                         animation = None

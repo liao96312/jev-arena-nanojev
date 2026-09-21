@@ -73,6 +73,32 @@ class NanoJevAdapterTests(unittest.TestCase):
         action, reason = select_action({"move_w": .98, "move_n": .015, "move_s": .005}, env, "hybrid")
         self.assertEqual((action, reason), ("move_n", "planner_route"))
 
+    def test_hybrid_routes_to_missing_weapon_before_gem(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0, medkits=0))
+        env.player.position = (2, 2)
+        env.gems, env.bow_pickups = {(0, 2)}, {(4, 2)}
+        action, reason = select_action({"move_w": .9, "move_e": .1}, env, "hybrid")
+        self.assertEqual((action, reason), ("move_e", "planner_route"))
+
+    def test_hybrid_uses_aligned_ranged_weapon(self):
+        env = ArenaEnv(ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0, medkits=0))
+        action, reason = select_action({"move_s": .18, "shoot_bow_e": .11,
+                                        "shoot_pistol_e": .08}, env, "hybrid")
+        self.assertEqual((action, reason), ("shoot_bow_e", "planner_rerank"))
+
+    def test_hybrid_immediately_heals_at_critical_health(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0, medkits=0))
+        env.player.hp, env.player.medkits = 30, 1
+        action, reason = select_action({"move_e": .9, "heal": .1}, env, "hybrid")
+        self.assertEqual((action, reason), ("heal", "survival_heal"))
+
+    def test_hybrid_routes_to_ground_medkit_before_gem_when_low(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0, medkits=0))
+        env.player.position, env.player.hp = (2, 2), 40
+        env.gems, env.medkits = {(0, 2)}, {(4, 2)}
+        action, reason = select_action({"move_w": .9, "move_e": .1}, env, "hybrid")
+        self.assertEqual((action, reason), ("move_e", "planner_route"))
+
     def test_model_policy_preserves_argmax(self):
         action, reason = select_action({"move_w": .6, "move_e": .4}, self.env, "model")
         self.assertEqual((action, reason), ("move_w", "model_argmax"))

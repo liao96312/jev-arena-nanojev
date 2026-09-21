@@ -18,6 +18,10 @@ def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
         parts.append(f"arrows {env.player.loadout.arrows}->{simulation.player.loadout.arrows}")
     if simulation.player.loadout.energy != env.player.loadout.energy:
         parts.append(f"energy {env.player.loadout.energy}->{simulation.player.loadout.energy}")
+    if simulation.player.loadout.bow != env.player.loadout.bow:
+        parts.append("acquire_bow")
+    if simulation.player.loadout.pistol != env.player.loadout.pistol:
+        parts.append("acquire_pistol")
     threats = simulation.imminent_threats()
     if threats:
         parts.append(f"next_damage={sum(power for _, power in threats)}")
