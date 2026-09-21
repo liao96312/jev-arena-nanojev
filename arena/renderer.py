@@ -85,7 +85,7 @@ class ArenaRenderer:
             position = (previous[0] + (enemy.position[0] - previous[0]) * eased,
                         previous[1] + (enemy.position[1] - previous[1]) * eased)
             self._sprite(position, f"enemy_{enemy.enemy_type.value}")
-            self._health_bar(position, enemy.hp, 30)
+            self._health_bar(position, enemy.hp, enemy.max_hp)
             self._intent(enemy.position, enemy.intent)
         player_position = env.player.position
         attack_effect = None

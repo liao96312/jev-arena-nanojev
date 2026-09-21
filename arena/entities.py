@@ -39,6 +39,26 @@ class EnemyType(StrEnum):
     BOMBER = "bomber"
 
 
+ENEMY_HP = {
+    EnemyType.CHASER: 30,
+    EnemyType.CHARGER: 45,
+    EnemyType.ARCHER: 20,
+    EnemyType.BOMBER: 24,
+}
+ENEMY_MELEE_BONUS = {
+    EnemyType.CHASER: 0,
+    EnemyType.CHARGER: 3,
+    EnemyType.ARCHER: -1,
+    EnemyType.BOMBER: 1,
+}
+ENEMY_MOVE_DELAY = {
+    EnemyType.CHASER: 0,
+    EnemyType.CHARGER: 1,
+    EnemyType.ARCHER: 2,
+    EnemyType.BOMBER: 2,
+}
+
+
 class IntentType(StrEnum):
     MOVE = "move"
     MELEE = "melee"
@@ -84,7 +104,13 @@ class Intent:
 @dataclass
 class Enemy:
     position: tuple[int, int]
-    hp: int = 30
+    hp: int | None = None
     enemy_type: EnemyType = EnemyType.CHASER
     intent: Intent | None = None
     stunned: int = 0
+    max_hp: int = field(init=False)
+
+    def __post_init__(self) -> None:
+        base_hp = ENEMY_HP[self.enemy_type]
+        self.hp = base_hp if self.hp is None else self.hp
+        self.max_hp = max(base_hp, self.hp)

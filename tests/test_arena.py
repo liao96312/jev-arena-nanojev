@@ -345,11 +345,27 @@ class ArenaTests(unittest.TestCase):
                        Enemy((2, 1), enemy_type=EnemyType.BOMBER),
                        Enemy((3, 1), enemy_type=EnemyType.ARCHER)]
         env._plan_enemy_intents()
-        self.assertEqual([enemy.intent.countdown for enemy in env.enemies], [2, 3, 3, 3])
+        self.assertEqual([enemy.intent.countdown for enemy in env.enemies], [2, 3, 4, 4])
         env.enemies[1].position = (7, 1)
         env._plan_enemy_intents([env.enemies[1]])
         self.assertEqual((env.enemies[1].intent.kind, env.enemies[1].intent.countdown),
                          (IntentType.CHARGE, 2))
+
+    def test_enemy_types_have_independent_hp_damage_and_cooldown(self):
+        env = ArenaEnv(ArenaConfig(width=7, height=7, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, enemy_damage=5, enemy_move_interval=2))
+        expected = {
+            EnemyType.CHASER: (30, 5, 2),
+            EnemyType.CHARGER: (45, 8, 3),
+            EnemyType.BOMBER: (24, 20, 2),
+            EnemyType.ARCHER: (20, 4, 4),
+        }
+        for enemy_type, (hp, damage, cooldown) in expected.items():
+            enemy = Enemy((3, 2), enemy_type=enemy_type)
+            env.player.position, env.enemies = (3, 3), [enemy]
+            env._plan_enemy_intents()
+            self.assertEqual((enemy.hp, enemy.max_hp, enemy.intent.power, enemy.intent.countdown),
+                             (hp, hp, damage, cooldown))
 
     def test_bow_pushes_into_fire_but_pistol_does_not(self):
         config = ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0,

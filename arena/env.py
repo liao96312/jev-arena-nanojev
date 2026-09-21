@@ -5,7 +5,8 @@ import random
 from collections import deque
 from dataclasses import dataclass
 
-from .entities import DIRECTIONS, Action, Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout
+from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, Action, Enemy, EnemyType,
+                       Intent, IntentType, Player, PlayerLoadout)
 
 
 @dataclass(frozen=True)
@@ -489,7 +490,7 @@ class ArenaEnv:
                 direction = next(name for name, delta in DIRECTIONS.items()
                                  if self.add(enemy.position, name) == self.player.position)
                 enemy.intent = Intent(IntentType.MELEE, direction, self._enemy_interval(enemy),
-                                      self.config.enemy_damage)
+                                      max(1, self.config.enemy_damage + ENEMY_MELEE_BONUS[enemy.enemy_type]))
                 continue
             dx = self.player.position[0] - enemy.position[0]
             dy = self.player.position[1] - enemy.position[1]
@@ -525,7 +526,7 @@ class ArenaEnv:
         return None
 
     def _enemy_interval(self, enemy: Enemy) -> int:
-        return self.config.enemy_move_interval + (enemy.enemy_type != EnemyType.CHASER)
+        return self.config.enemy_move_interval + ENEMY_MOVE_DELAY[enemy.enemy_type]
 
     def _resolve_enemy_intents(self, events: list[str]) -> float:
         reward = 0.0

@@ -490,7 +490,7 @@ Bomber 是解决“怪越多越死局”的重要设计。
 - [x] Charger Intent
 - [x] Archer Intent
 - [x] Bomber Intent
-- [ ] 每种敌人独立 HP / damage / cooldown
+- [x] 每种敌人独立 HP / damage / cooldown
 - [x] 地图生成保持敌人组成合理
 - [x] Renderer 不同图标
 - [x] Observation 标明 enemy_type
