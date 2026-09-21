@@ -14,7 +14,11 @@ if __name__ == "__main__":
     parser.add_argument("input", type=Path)
     parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
-    summary = {"file": str(args.input), "bytes": args.input.stat().st_size,
+    try:
+        display_path = args.input.resolve().relative_to(Path.cwd().resolve())
+    except ValueError:
+        display_path = args.input
+    summary = {"file": str(display_path), "bytes": args.input.stat().st_size,
                "sha256": hashlib.sha256(args.input.read_bytes()).hexdigest(),
                **validate_dataset(args.input)}
     if args.manifest:

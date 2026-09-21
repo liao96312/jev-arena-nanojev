@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $dataset)) {
 
 & $python (Join-Path $projectRoot "scripts\validate_dataset.py") $dataset --manifest $manifest
 if ($LASTEXITCODE) { throw "Beam Teacher 数据校验失败" }
-& $python (Join-Path $projectRoot "scripts\audit_tokens.py") $dataset --max-length 192
+& $python (Join-Path $projectRoot "scripts\audit_tokens.py") $dataset --max-length 192 --manifest $manifest
 if ($LASTEXITCODE) { throw "Beam Teacher token 审计失败" }
 & $python (Join-Path $projectRoot "third_party\NanoJev\scripts\train_pipeline_decisions.py") `
     --input $dataset --output-dir $checkpoint `

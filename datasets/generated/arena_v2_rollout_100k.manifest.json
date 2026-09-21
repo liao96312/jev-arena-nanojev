@@ -1,0 +1,21 @@
+{
+  "file": "datasets\\generated\\arena_v2_rollout_100k.jsonl",
+  "bytes": 159851260,
+  "sha256": "89e98b3e716344e545d3f4aa878e639c00611af39c2179d31dd0006ef6e54a69",
+  "records": 100000,
+  "groups": 2170,
+  "splits": {
+    "train": 70000,
+    "dev": 10000,
+    "calibration": 5000,
+    "test": 10000,
+    "ood": 5000
+  },
+  "token_audit": {
+    "questions": 100000,
+    "p50": 169,
+    "p95": 187,
+    "max": 203,
+    "max_length": 256
+  }
+}

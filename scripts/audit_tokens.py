@@ -16,6 +16,7 @@ def main() -> None:
     parser.add_argument("--tokenizer", type=Path,
                         default=ROOT / "runs" / "arena_rollout_memory_head_50step" / "tokenizer")
     parser.add_argument("--max-length", type=int, default=192)
+    parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, local_files_only=True,
                                                trust_remote_code=False)
@@ -29,8 +30,13 @@ def main() -> None:
         raise ValueError("dataset contains no questions")
     lengths.sort()
     percentile = lambda fraction: lengths[round((len(lengths) - 1) * fraction)]
-    print(json.dumps({"questions": len(lengths), "p50": percentile(.5), "p95": percentile(.95),
-                      "max": lengths[-1], "max_length": args.max_length}))
+    summary = {"questions": len(lengths), "p50": percentile(.5), "p95": percentile(.95),
+               "max": lengths[-1], "max_length": args.max_length}
+    if args.manifest:
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        manifest["token_audit"] = summary
+        args.manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(summary))
 
 
 if __name__ == "__main__":

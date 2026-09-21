@@ -861,8 +861,9 @@ bomber explosion threatens current tile
 这样可以控制 token。
 
 已实现：状态输出玩家位置、Dash CD、四邻格、最近战术目标、最近 3 只敌人的
-类型/意图/倒计时，以及由环境规则统一计算的全部即时威胁。100 条 rollout 的
-候选路径 token 审计为 P50/P95/最大值 `174/184/191`，兼容 `max_length=192`。
+类型/意图/倒计时，以及由环境规则统一计算的全部即时威胁。100k 条 rollout 的
+候选路径 token 审计为 P50/P95/最大值 `169/187/203`，训练使用 `max_length=256`；
+早期 10k 数据仍兼容 `max_length=192`。
 
 ---
 
@@ -1402,7 +1403,7 @@ RuleAgent V2 明显高于 Random。
 TODO：
 
 - [x] audit tokens
-- [x] 调整 max_length（压缩观测后沿用 192）
+- [x] 调整 max_length（10k 使用 192；100k 全量审计后使用 256）
 - [x] 10k dataset smoke train
 - [ ] 100k dataset train
 - [ ] benchmark
