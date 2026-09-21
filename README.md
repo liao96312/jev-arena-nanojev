@@ -149,7 +149,8 @@ cd third_party/NanoJev
   --web-root web --host 127.0.0.1 --port 8765 --precision fp32
 ```
 
-启动器会优先使用上面的 2 AP checkpoint，缺失时回退到旧训练模型，再回退到上游原始模型。上游原始 checkpoint 位于
+启动器会按 Beam 蒸馏成品、100k V2 成品、2 AP smoke、旧训练模型、上游原始模型的顺序选择，
+并只使用已经生成 `best.safetensors` 的完整 checkpoint。上游原始 checkpoint 位于
 `checkpoints/NanoJev/variants/games_gold_seed17`。
 
 下载游戏 checkpoint：

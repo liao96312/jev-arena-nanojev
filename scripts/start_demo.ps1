@@ -1,21 +1,22 @@
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
-$apCheckpoint = Join-Path $projectRoot "runs\arena_v2_ap_smoke_head_50step"
-$trainedCheckpoint = Join-Path $projectRoot "runs\arena_rollout_memory_head_50step"
-$upstreamCheckpoint = Join-Path $projectRoot "checkpoints\NanoJev\variants\games_gold_seed17"
-$checkpoint = if (Test-Path (Join-Path $apCheckpoint "config.json")) {
-    $apCheckpoint
-} elseif (Test-Path (Join-Path $trainedCheckpoint "config.json")) {
-    $trainedCheckpoint
-} else {
-    $upstreamCheckpoint
-}
+$candidates = @(
+    (Join-Path $projectRoot "runs\arena_v2_beam_10k_head_500step"),
+    (Join-Path $projectRoot "runs\arena_v2_100k_head_500step"),
+    (Join-Path $projectRoot "runs\arena_v2_ap_smoke_head_50step"),
+    (Join-Path $projectRoot "runs\arena_rollout_memory_head_50step"),
+    (Join-Path $projectRoot "checkpoints\NanoJev\variants\games_gold_seed17")
+)
+$checkpoint = $candidates | Where-Object {
+    (Test-Path (Join-Path $_ "config.json")) -and
+    (Test-Path (Join-Path $_ "best.safetensors"))
+} | Select-Object -First 1
 $nanoJevRoot = Join-Path $projectRoot "third_party\NanoJev"
 $serviceStarted = $false
 
 try {
-    if (-not (Test-Path (Join-Path $checkpoint "config.json"))) {
+    if (-not $checkpoint) {
         throw "未找到 NanoJev checkpoint，请先按 README 下载模型"
     }
     try {
