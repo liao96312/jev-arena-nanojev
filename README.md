@@ -8,7 +8,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-90%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-91%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -32,7 +32,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 | 四类敌人 | 追击怪、冲锋怪、炸弹怪、射手怪拥有独立生命、伤害、移动节奏和攻击方式 |
 | 可读预警 | 激光、冲锋与爆炸通过地面轨迹和危险区域预警，不显示调试式方向字母与倒计时 |
 | 主动武器 | 复合弓伤害高并击退；脉冲手枪射程更远；武器和有限弹药跨关保存 |
-| 技能 | 冲刺两格并在动作内获得无敌帧；EMP 可打断附近敌人；低血量会优先寻找或使用血包 |
+| 技能 | 冲刺两格并在动作内获得无敌帧，会按目标与威胁选择方向；EMP 可打断附近敌人 |
 | 环境互动 | 火堆、地刺、深坑和爆炸桶既是威胁，也能用于击杀敌人和触发连锁爆炸 |
 | 安全生成 | 宝石、血包和关键道具保证存在无伤可达路线，出生点不会立刻遭到激光锁定 |
 | 中文界面 | 实时显示模型概率、选择依据、推理耗时、关卡难度、武器弹药和技能状态 |
@@ -146,7 +146,7 @@ Jev API 模式从 `TYPESAFE_API_KEY` 环境变量读取密钥；本机启动器�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **90 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **91 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

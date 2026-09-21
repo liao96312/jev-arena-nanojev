@@ -45,6 +45,7 @@ class ArenaRenderer:
         font_path = "C:/Windows/Fonts/msyh.ttc"
         self.font = pygame.font.Font(font_path, 22)
         self.small = pygame.font.Font(font_path, 17)
+        self.player_facing = "s"
         self.restart_button = pygame.Rect(self.map_width + self.PANEL - 112,
                                           self.map_height + 34, 100, 30)
         self.sprites = self._load_sprites()
@@ -110,9 +111,12 @@ class ArenaRenderer:
                 distance = int(shot_event.rsplit(":", 1)[1]) if shot_event else 5
                 self._ranged_effect(env.player.position, (dx, dy), progress,
                                     animated_action.startswith("shoot_bow_"), distance)
-        self._sprite(player_position, "player")
+        facing_action = animated_action or env.last_action or ""
+        if facing_action.startswith(("move_", "dash_", "attack_", "shove_", "shoot_")):
+            self.player_facing = facing_action[-1]
+        self._sprite(player_position, f"player_{self.player_facing}")
         if animation and animated_action.startswith("dash_"):
-            self._dash_effect(player_position, progress)
+            self._dash_effect(player_position, animated_action[-1], progress)
         if attack_effect:
             self._attack_effect(*attack_effect)
         for event in events:
@@ -185,7 +189,7 @@ class ArenaRenderer:
     def _load_sprites(self) -> dict[str, object]:
         root = Path(__file__).resolve().parents[1] / "assets" / "sprites"
         sprites = {}
-        for name in ("player", "enemy_chaser", "enemy_charger", "enemy_bomber", "enemy_archer",
+        for name in ("player", "player_n", "player_e", "enemy_chaser", "enemy_charger", "enemy_bomber", "enemy_archer",
                      "gem", "fire", "medkit", "wall", "item_bow", "item_pulse_pistol",
                      "ammo_arrows", "ammo_energy_cell", "barrel", "spike", "pit",
                      "projectile_enemy_laser", "projectile_player_pulse", "projectile_player_arrow",
@@ -204,6 +208,8 @@ class ArenaRenderer:
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
             size = max(1, round(cropped.get_width() * scale)), max(1, round(cropped.get_height() * scale))
             sprites[name] = self.pg.transform.smoothscale(cropped, size)
+        sprites["player_s"] = sprites["player"]
+        sprites["player_w"] = self.pg.transform.flip(sprites["player_e"], True, False)
         return sprites
 
     def _sprite(self, position: tuple[float, float], name: str) -> None:
@@ -230,9 +236,14 @@ class ArenaRenderer:
         self.pg.draw.circle(self.screen, (255, 105, 45), center, radius, max(2, round(6 * (1 - progress))))
         self.pg.draw.circle(self.screen, (255, 225, 90), center, max(2, radius // 2), 2)
 
-    def _dash_effect(self, position: tuple[float, float], progress: float) -> None:
+    def _dash_effect(self, position: tuple[float, float], direction: str, progress: float) -> None:
         center = (round(position[0] * self.CELL + self.CELL / 2),
                   round(position[1] * self.CELL + self.CELL / 2))
+        dx, dy = {"n": (0, -1), "s": (0, 1), "w": (-1, 0), "e": (1, 0)}[direction]
+        for length, alpha in ((30, 75), (20, 130), (11, 210)):
+            color = (65, min(255, 150 + alpha // 3), 255)
+            start = (center[0] - dx * length, center[1] - dy * length)
+            self.pg.draw.line(self.screen, color, start, center, max(1, alpha // 70))
         radius = round(self.CELL * (.48 + .1 * math.sin(progress * math.pi)))
         self.pg.draw.circle(self.screen, (105, 245, 255), center, radius, 3)
         self.pg.draw.circle(self.screen, (235, 255, 255), center, max(3, radius - 5), 1)

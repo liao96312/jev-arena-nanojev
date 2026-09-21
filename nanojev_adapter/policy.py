@@ -3,8 +3,11 @@ from collections import deque
 
 
 def _gem_route_actions(env, probabilities: dict[str, float]) -> set[str]:
-    moves = {action: env.add(env.player.position, action[-1]) for action in probabilities
-             if action.startswith("move_")}
+    moves = {}
+    for action in probabilities:
+        if action.startswith(("move_", "dash_")):
+            target = env.add(env.player.position, action[-1])
+            moves[action] = env.add(target, action[-1]) if action.startswith("dash_") else target
     blocked = set(env.walls) | set(env.pits) | set(env.barrels) | {enemy.position for enemy in env.enemies}
     targets = (env.medkits if env.player.hp <= 60 and env.medkits else
                ((env.bow_pickups if not env.player.loadout.bow else set()) |
@@ -54,22 +57,30 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
 
     def score(action: str) -> float:
         value = math.log(max(probabilities[action], 1e-12))
-        if action.startswith("move_"):
+        if action.startswith(("move_", "dash_")):
             target = env.add(env.player.position, action[-1])
+            if action.startswith("dash_"):
+                target = env.add(target, action[-1])
             if target == env.previous_player_position and safe_non_backtracking:
                 return -math.inf
-            if target in env.fires:
+            if action.startswith("move_") and target in env.fires:
                 value -= 2.0
-            if target in env.spikes:
+            if action.startswith("move_") and target in env.spikes:
                 value -= 2.4
+            objective_gain = 0
             if mode == "hybrid" and env.gems:
                 before = min(env._distance(env.player.position, gem) for gem in env.gems)
                 after = min(env._distance(target, gem) for gem in env.gems)
-                value += .8 * (before - after)
+                objective_gain = before - after
+                value += .8 * objective_gain
             if mode == "hybrid" and env.player.hp <= 50 and env.medkits:
                 before = min(env._distance(env.player.position, medkit) for medkit in env.medkits)
                 after = min(env._distance(target, medkit) for medkit in env.medkits)
-                value += .6 * (before - after)
+                medkit_gain = before - after
+                objective_gain = max(objective_gain, medkit_gain)
+                value += .6 * medkit_gain
+            if action.startswith("dash_") and objective_gain <= 0 and not env.imminent_threats():
+                value -= 1.25
         elif mode == "hybrid" and action.startswith("attack_") and env.player.hp > 25:
             value += .4
         elif mode == "hybrid" and action.startswith("shoot_"):
@@ -82,7 +93,8 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
 
     chosen = max(sorted(probabilities), key=score)
     needs_medkit = env.player.hp <= 50 and bool(env.medkits)
-    if mode == "hybrid" and env.gems and (chosen.startswith("move_") or chosen == "wait" or needs_medkit):
+    if mode == "hybrid" and env.gems and (chosen.startswith(("move_", "dash_")) or
+                                           chosen == "wait" or needs_medkit):
         routes = _gem_route_actions(env, probabilities)
         if routes:
             routed = max(sorted(routes), key=probabilities.__getitem__)
