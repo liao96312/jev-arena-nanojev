@@ -25,3 +25,6 @@ if ($LASTEXITCODE) { throw "100k token 审计失败" }
     --max-microbatch-tokens 4096 --eval-every 100 --max-length 192 `
     --head-lr 2e-4 --precision fp32
 if ($LASTEXITCODE) { throw "100k 训练失败" }
+& $python (Join-Path $projectRoot "scripts\calibrate_predictions.py") $checkpoint `
+    --output (Join-Path $checkpoint "calibration.json")
+if ($LASTEXITCODE) { throw "100k calibration 失败" }

@@ -48,6 +48,9 @@ pre-AP 数据在 GTX 1660S 上的 50-step head-only 烟测将 dev CE 从 2.5932 
 2 AP 数据的对应烟测将 dev CE 从 2.5745 降至 2.1137，test/OOD CE 为 2.1486/2.1545，
 峰值显存 2.53GB；完整指标见
 [`nanojev_v2_ap_smoke_50step.json`](baselines/v2/nanojev_v2_ap_smoke_50step.json)。
+该 checkpoint 的独立 calibration 集标量温度拟合触及搜索上界 `T=54.6`，test CE 降至 2.1004，
+表明当前输出偏尖锐但排序信号仍弱；结果见
+[`nanojev_v2_ap_temperature.json`](baselines/v2/nanojev_v2_ap_temperature.json)，不作为现实事件概率校准结论。
 真实第 3 关 4×100 行动 smoke benchmark 中，hybrid 4/4 局收齐宝石且 0 死亡；纯模型策略
 0 宝石并频繁折返，说明目前仍需要 planner 导航。结果见
 [`nanojev_ap_benchmark_4x100.json`](baselines/v2/nanojev_ap_benchmark_4x100.json)，正式 benchmark 暂不勾选。

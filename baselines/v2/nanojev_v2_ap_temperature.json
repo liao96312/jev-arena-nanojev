@@ -1,0 +1,78 @@
+{
+  "method": "global scalar temperature fitted on held-out calibration policy targets",
+  "interpretation": "action-policy distribution recovery; not empirical event-probability calibration",
+  "temperature": 54.598150033102435,
+  "temperature_fitted": true,
+  "temperature_search_log_bounds": [
+    -4.0,
+    4.0
+  ],
+  "temperature_search_boundary_hit": true,
+  "selected_on": "calibration target CE",
+  "metrics_by_split": {
+    "dev": {
+      "before": {
+        "questions": 1000,
+        "target_ce": 2.11369757293751,
+        "target_kl": 0.2653111657600027,
+        "target_tv": 0.2629434845238476,
+        "target_brier": 0.08064065587283828
+      },
+      "after": {
+        "questions": 1000,
+        "target_ce": 2.0663253484283484,
+        "target_kl": 0.2179389412508389,
+        "target_tv": 0.21584032889407437,
+        "target_brier": 0.06918255156582498
+      }
+    },
+    "calibration": {
+      "before": {
+        "questions": 500,
+        "target_ce": 2.060179968702464,
+        "target_kl": 0.2866778949654939,
+        "target_tv": 0.2766906735696512,
+        "target_brier": 0.09058690189736983
+      },
+      "after": {
+        "questions": 500,
+        "target_ce": 2.01773114948828,
+        "target_kl": 0.24422907575130862,
+        "target_tv": 0.23466173677580104,
+        "target_brier": 0.07992367391047077
+      }
+    },
+    "test": {
+      "before": {
+        "questions": 1000,
+        "target_ce": 2.1485703657736055,
+        "target_kl": 0.252223091418115,
+        "target_tv": 0.2574138550866889,
+        "target_brier": 0.07719712872493269
+      },
+      "after": {
+        "questions": 1000,
+        "target_ce": 2.10035070432692,
+        "target_kl": 0.20400342997143048,
+        "target_tv": 0.2068412745265608,
+        "target_brier": 0.06591367617133757
+      }
+    },
+    "ood": {
+      "before": {
+        "questions": 500,
+        "target_ce": 2.154484540371242,
+        "target_kl": 0.2237419293613747,
+        "target_tv": 0.2387295134735194,
+        "target_brier": 0.06711906279461399
+      },
+      "after": {
+        "questions": 500,
+        "target_ce": 2.1367546987569486,
+        "target_kl": 0.2060120877470823,
+        "target_tv": 0.21311181870883183,
+        "target_brier": 0.0625697836978196
+      }
+    }
+  }
+}
