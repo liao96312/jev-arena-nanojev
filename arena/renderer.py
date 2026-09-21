@@ -153,9 +153,8 @@ class ArenaRenderer:
         if selection_reason:
             self._text(f"决策依据：{REASON_NAMES.get(selection_reason, selection_reason)}", left, 152,
                        colors["muted"], small=True)
-        speed_tier = 1 + sum(level >= threshold for threshold in (6, 12, 18, 24))
         self._text(f"难度：敌 {env.config.enemies}  火 {env.config.fires}  刺 {env.config.spikes}  "
-                   f"坑 {env.config.pits}  速度 {speed_tier}阶",
+                   f"坑 {env.config.pits}  敌生命 +{env.config.enemy_hp_bonus}",
                    left, 174, colors["muted"], small=True)
         dash_cd = env.player.cooldowns.get("dash", 0)
         emp_cd = env.player.cooldowns.get("emp", 0)
@@ -339,8 +338,45 @@ class ArenaRenderer:
         start_pixel = (enemy.position[0] * self.CELL + self.CELL // 2,
                        enemy.position[1] * self.CELL + self.CELL // 2)
         end_pixel = (end[0] * self.CELL + self.CELL // 2, end[1] * self.CELL + self.CELL // 2)
-        color = (255, 165, 65) if intent.kind == IntentType.CHARGE else (255, 90, 135)
-        self.pg.draw.line(self.screen, color, start_pixel, end_pixel, 3)
+        self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
+
+    def _telegraph_line(self, start, end, kind: IntentType, countdown: int) -> None:
+        """Draw readable danger telegraphs without adding another sprite dependency."""
+        charge = kind == IntentType.CHARGE
+        color = (255, 174, 55) if charge else (255, 70, 135)
+        overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+        urgency = 1.0 if countdown <= 1 else 0.72
+        self.pg.draw.line(overlay, (*color, round(45 * urgency)), start, end, 13 if charge else 10)
+        self.pg.draw.line(overlay, (*color, round(135 * urgency)), start, end, 6 if charge else 4)
+
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        distance = max(1.0, math.hypot(dx, dy))
+        ux, uy = dx / distance, dy / distance
+        phase = (self.pg.time.get_ticks() / (420 if charge else 620)) % 1
+        spacing = 22 if charge else 18
+        for offset in range(0, round(distance), spacing):
+            travel = (offset + phase * spacing) % distance
+            point = (round(start[0] + ux * travel), round(start[1] + uy * travel))
+            radius = 4 if charge else 3
+            self.pg.draw.circle(overlay, (255, 245, 205, 235) if charge else (255, 225, 240, 235),
+                                point, radius)
+        self.screen.blit(overlay, (0, 0))
+
+        if charge:
+            # A broad impact gate makes the bull's yellow charge lane distinct from gunfire.
+            px, py = -uy, ux
+            half = 10
+            gate_a = (round(end[0] + px * half), round(end[1] + py * half))
+            gate_b = (round(end[0] - px * half), round(end[1] - py * half))
+            self.pg.draw.line(self.screen, color, gate_a, gate_b, 4)
+            self.pg.draw.circle(self.screen, (255, 235, 160), end, 7, 2)
+        else:
+            # Archer laser ends in a compact crosshair rather than an ambiguous plain line.
+            self.pg.draw.circle(self.screen, color, end, 10, 2)
+            for ax, ay in ((-15, 0), (15, 0), (0, -15), (0, 15)):
+                inner = (end[0] + round(ax * .6), end[1] + round(ay * .6))
+                outer = (end[0] + ax, end[1] + ay)
+                self.pg.draw.line(self.screen, (255, 220, 235), inner, outer, 2)
 
     def _event_feedback(self, events: tuple[str, ...]) -> None:
         labels = []

@@ -28,6 +28,7 @@ class ArenaConfig:
     arrow_bundles: int = 0
     energy_cells: int = 0
     enemy_damage: int = 5
+    enemy_hp_bonus: int = 0
     fire_damage: int = 10
     spike_damage: int = 12
     attack_damage: int = 20
@@ -77,8 +78,15 @@ def campaign_config(level: int) -> ArenaConfig:
         pistol_pickups=1 if level >= 3 else 0,
         arrow_bundles=1 if level >= 2 else 0,
         energy_cells=1 if level >= 4 else 0,
-        enemy_damage=min(12, 4 + (level - 1) // 2),
-        fire_damage=min(18, 8 + level),
+        enemy_damage=4 + (level - 1) // 3,
+        enemy_hp_bonus=level - 1,
+        fire_damage=9 + (level - 1) // 3,
+        spike_damage=12 + (level - 1) // 4,
+        charger_damage=10 + (level - 1) // 4,
+        collision_damage=15 + (level - 1) // 4,
+        bomber_damage=20 + (level - 1) // 3,
+        archer_damage=12 + (level - 1) // 4,
+        barrel_damage=20 + (level - 1) // 3,
         enemy_move_interval=2,
         charger_ratio=min(0.45, 0.2 + level * 0.03),
         bomber_ratio=min(0.25, 0.1 + level * 0.02),
@@ -148,7 +156,10 @@ class ArenaEnv:
                                                          self.config.charger_ratio,
                                                          self.config.archer_ratio)) else
                           EnemyType.CHASER)
-            self.enemies.append(Enemy(next(take), enemy_type=enemy_type))
+            enemy = Enemy(next(take), enemy_type=enemy_type)
+            enemy.hp += self.config.enemy_hp_bonus
+            enemy.max_hp += self.config.enemy_hp_bonus
+            self.enemies.append(enemy)
         self.gems = {next(take) for _ in range(self.config.gems)}
         self.fires = {next(take) for _ in range(self.config.fires)}
         self.spikes = {next(take) for _ in range(self.config.spikes)}
@@ -547,7 +558,8 @@ class ArenaEnv:
         return None
 
     def _enemy_move_interval(self, enemy: Enemy) -> int:
-        speedup = int(self.config.difficulty_level >= ENEMY_SPEED_LEVEL[enemy.enemy_type])
+        threshold = ENEMY_SPEED_LEVEL[enemy.enemy_type]
+        speedup = 0 if self.config.difficulty_level < threshold else 1 + (self.config.difficulty_level - threshold) // 12
         return max(1, self.config.enemy_move_interval + ENEMY_MOVE_DELAY[enemy.enemy_type] - speedup)
 
     def _resolve_enemy_intents(self, events: list[str]) -> float:

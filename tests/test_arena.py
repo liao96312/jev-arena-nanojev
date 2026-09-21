@@ -3,7 +3,7 @@ import unittest
 from agents import RandomAgent, RuleAgent
 from arena import ArenaConfig, ArenaEnv, campaign_config
 from arena.candidates import build_candidates
-from arena.entities import Action, Enemy, EnemyType, Intent, IntentType, PlayerLoadout
+from arena.entities import Action, ENEMY_HP, Enemy, EnemyType, Intent, IntentType, PlayerLoadout
 
 
 class ArenaTests(unittest.TestCase):
@@ -70,7 +70,18 @@ class ArenaTests(unittest.TestCase):
         self.assertLess(first.spikes, fifth.spikes)
         self.assertLess(first.pits, fifth.pits)
         self.assertGreater(first.medkits, fifth.medkits)
+        self.assertLess(first.enemy_hp_bonus, fifth.enemy_hp_bonus)
+        self.assertLess(first.enemy_damage, fifth.enemy_damage)
         self.assertEqual((first.action_points, fifth.action_points), (2, 2))
+
+        configs = [campaign_config(level) for level in range(1, 31)]
+        self.assertEqual([config.enemy_hp_bonus for config in configs], list(range(30)))
+
+    def test_campaign_hp_bonus_is_applied_to_spawned_enemies(self):
+        env = ArenaEnv(campaign_config(5))
+        self.assertTrue(env.enemies)
+        self.assertTrue(all(enemy.max_hp - enemy.hp == 0 for enemy in env.enemies))
+        self.assertTrue(all(enemy.max_hp == ENEMY_HP[enemy.enemy_type] + 4 for enemy in env.enemies))
 
     def test_collecting_last_campaign_gem_completes_level(self):
         env = ArenaEnv(ArenaConfig(width=3, height=3, walls=0, enemies=0, gems=1, fires=0,
@@ -370,7 +381,8 @@ class ArenaTests(unittest.TestCase):
             6: [1, 3, 4, 4],
             12: [1, 2, 4, 4],
             18: [1, 2, 3, 4],
-            24: [1, 2, 3, 3],
+            24: [1, 1, 3, 3],
+            30: [1, 1, 2, 3],
         }
         types = (EnemyType.CHASER, EnemyType.CHARGER, EnemyType.ARCHER, EnemyType.BOMBER)
         for level, intervals in expected.items():
