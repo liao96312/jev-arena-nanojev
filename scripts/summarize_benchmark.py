@@ -14,7 +14,7 @@ def load(spec: str) -> tuple[str, list[dict]]:
 
 
 def summarize(label: str, rows: list[dict]) -> dict:
-    number = lambda key: [float(row[key]) for row in rows]
+    number = lambda key: [float(row.get(key, 0)) for row in rows]
     return {
         "label": label,
         "episodes": len(rows),
@@ -25,6 +25,14 @@ def summarize(label: str, rows: list[dict]) -> dict:
         "kills": int(sum(number("kills"))),
         "damage": int(sum(number("damage"))),
         "deaths": int(sum(number("death"))),
+        "win_rate": statistics.mean(number("win")),
+        "mean_hp_remaining": statistics.mean(number("hp_remaining")),
+        "environment_kills": int(sum(number("environment_kills"))),
+        "mean_branch_factor": statistics.mean(number("mean_branch_factor")),
+        "deadlock_rate": statistics.mean(number("deadlock_rate")),
+        "unique_action_rate": statistics.mean(number("unique_action_rate")),
+        "mean_entropy": statistics.mean(number("mean_entropy")),
+        "skill_efficiency": statistics.mean(number("skill_efficiency")),
         "mean_latency_p95_ms": statistics.mean(number("latency_p95_ms")),
     }
 

@@ -44,6 +44,8 @@ MCTS Teacher 已实现 UCT selection、expansion、随机 rollout、状态评估
 [`mcts_rule_3x100.json`](baselines/v2/mcts_rule_3x100.json)。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。
+Benchmark CSV 还会记录胜率、剩余生命、环境击杀、平均分支因子、死锁率、动作多样性、
+技能平均收益、决策熵与 P95 延迟，汇总脚本可直接生成 JSON、Markdown 和 SVG 报告。
 V2 复杂度基准中 RuleV2 平均分支因子为 7.317，79.92% 状态有至少 6 个动作，抽样状态的
 立即/两步必死率均为 0；完整指标见 [`baselines/v2/complexity_100x100.json`](baselines/v2/complexity_100x100.json)。
 Observation V2 会输出最近两个敌人的类型短码、Intent 与倒计时，并用环境规则标记即时威胁；
@@ -179,6 +181,14 @@ V2 10k smoke train 使用相同冻结骨干配置，但需将输入换为
 ```
 
 脚本先写入 `runs` 中的临时数据，完整生成后才移动到正式数据路径，训练中断不会留下伪装成完整数据集的文件。
+
+Beam Search Teacher 的 10k 软策略数据、500-step 蒸馏和 calibration 使用：
+
+```powershell
+.\configs\train_nanojev_beam_teacher_10k.ps1
+```
+
+该流水线同样支持从 `runs\arena_v2_beam_10k.partial.jsonl` 断点续跑。
 
 可复现的旧版 500-step 配置：
 
