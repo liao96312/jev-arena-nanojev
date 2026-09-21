@@ -67,6 +67,8 @@ class ArenaTests(unittest.TestCase):
         first, fifth = campaign_config(1), campaign_config(5)
         self.assertLess(first.enemies, fifth.enemies)
         self.assertLess(first.fires, fifth.fires)
+        self.assertLess(first.spikes, fifth.spikes)
+        self.assertLess(first.pits, fifth.pits)
         self.assertGreater(first.medkits, fifth.medkits)
         self.assertEqual((first.action_points, fifth.action_points), (2, 2))
 
@@ -209,6 +211,62 @@ class ArenaTests(unittest.TestCase):
         self.assertEqual((env.kills, env.environment_kills), (1, 1))
         self.assertIn("environment_kill", result.events)
         self.assertEqual(result.reward, 10.05)
+
+    def test_spike_damages_player_and_pushed_enemy(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   spikes=0, medkits=0, spike_damage=12))
+        env.player.position = (1, 2)
+        env.spikes = {(2, 2), (4, 2)}
+        result = env.step(Action.MOVE_E)
+        self.assertEqual(env.player.hp, 88)
+        self.assertIn("damage:spike:12", result.events)
+
+        enemy = Enemy((3, 2), hp=12, stunned=2)
+        env.enemies = [enemy]
+        env._plan_enemy_intents()
+        result = env.step(Action.SHOVE_E)
+        self.assertNotIn(enemy, env.enemies)
+        self.assertIn("environment_kill", result.events)
+
+    def test_pit_blocks_movement_but_shove_is_instant_kill(self):
+        env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   pits=0, medkits=0))
+        env.player.position = (1, 2)
+        env.pits = {(2, 2), (4, 2)}
+        self.assertNotIn(Action.MOVE_E, env.legal_actions())
+        self.assertNotIn(Action.DASH_E, env.legal_actions())
+
+        env.player.position = (2, 2)
+        enemy = Enemy((3, 2), stunned=2)
+        env.enemies = [enemy]
+        env._plan_enemy_intents()
+        self.assertIn("into pit; instant kill", build_candidates(env)["shove_e"])
+        result = env.step(Action.SHOVE_E)
+        self.assertNotIn(enemy, env.enemies)
+        self.assertEqual((env.kills, env.environment_kills), (1, 1))
+        self.assertIn("pit_fall", result.events)
+
+    def test_charger_falls_into_pit_and_enemies_avoid_hazards(self):
+        env = ArenaEnv(ArenaConfig(width=8, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   spikes=0, pits=0, medkits=0, enemy_move_interval=1))
+        env.player.position = (6, 2)
+        charger = Enemy((1, 2), enemy_type=EnemyType.CHARGER)
+        env.enemies = [charger]
+        env.pits = {(3, 2)}
+        env._plan_enemy_intents()
+        self.assertEqual(charger.intent.kind, IntentType.CHARGE)
+        charger.intent.countdown = 1
+        self.assertFalse(env.imminent_threats())
+        result = env.step(Action.WAIT)
+        self.assertNotIn(charger, env.enemies)
+        self.assertIn("pit_fall", result.events)
+
+        env.player.position = (5, 3)
+        env.enemies = [Enemy((1, 2))]
+        env.pits, env.spikes = {(2, 2)}, {(3, 2)}
+        env._plan_enemy_intents()
+        target = env.add(env.enemies[0].position, env.enemies[0].intent.direction)
+        self.assertNotIn(target, env.pits | env.spikes)
 
     def test_shove_collision_damages_both_enemies(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,

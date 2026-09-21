@@ -17,6 +17,8 @@ class ArenaConfig:
     enemies: int = 3
     gems: int = 6
     fires: int = 10
+    spikes: int = 0
+    pits: int = 0
     barrels: int = 0
     medkits: int = 2
     bow_pickups: int = 0
@@ -25,6 +27,7 @@ class ArenaConfig:
     energy_cells: int = 0
     enemy_damage: int = 5
     fire_damage: int = 10
+    spike_damage: int = 12
     attack_damage: int = 20
     heal_amount: int = 35
     enemy_move_interval: int = 1
@@ -62,6 +65,8 @@ def campaign_config(level: int) -> ArenaConfig:
         enemies=min(8, 1 + (level + 1) // 2),
         gems=min(8, 2 + (level + 1) // 2),
         fires=min(24, 4 + level * 2),
+        spikes=min(8, max(0, level - 1) * 2),
+        pits=min(4, max(0, level - 2)),
         barrels=min(4, level // 2),
         medkits=max(1, 3 - level // 3),
         bow_pickups=1 if level == 1 else 0,
@@ -119,7 +124,8 @@ class ArenaEnv:
     def _generate_map(self) -> None:
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
-        needed = (1 + self.config.walls + self.config.enemies + self.config.gems + self.config.fires + self.config.barrels +
+        needed = (1 + self.config.walls + self.config.enemies + self.config.gems + self.config.fires +
+                  self.config.spikes + self.config.pits + self.config.barrels +
                   self.config.medkits + self.config.bow_pickups + self.config.pistol_pickups +
                   self.config.arrow_bundles + self.config.energy_cells)
         if needed > len(cells):
@@ -140,6 +146,8 @@ class ArenaEnv:
             self.enemies.append(Enemy(next(take), enemy_type=enemy_type))
         self.gems = {next(take) for _ in range(self.config.gems)}
         self.fires = {next(take) for _ in range(self.config.fires)}
+        self.spikes = {next(take) for _ in range(self.config.spikes)}
+        self.pits = {next(take) for _ in range(self.config.pits)}
         self.barrels = {next(take) for _ in range(self.config.barrels)}
         self.medkits = {next(take) for _ in range(self.config.medkits)}
         self.bow_pickups = {next(take) for _ in range(self.config.bow_pickups)}
@@ -155,7 +163,8 @@ class ArenaEnv:
             position = frontier.pop()
             for direction in DIRECTIONS:
                 target = self.add(position, direction)
-                if self.in_bounds(target) and target not in self.walls and target not in reachable:
+                if (self.in_bounds(target) and target not in self.walls and target not in self.pits and
+                        target not in reachable):
                     reachable.add(target)
                     frontier.append(target)
         return reachable
@@ -165,6 +174,7 @@ class ArenaEnv:
                              for direction in DIRECTIONS)
         exits = sum(self.in_bounds(self.add(self.player.position, direction)) and
                     self.add(self.player.position, direction) not in self.walls and
+                    self.add(self.player.position, direction) not in self.pits and
                     self.add(self.player.position, direction) not in self.barrels and
                     not self.enemy_at(self.add(self.player.position, direction))
                     for direction in DIRECTIONS)
@@ -196,7 +206,8 @@ class ArenaEnv:
     def _ensure_pickups_reachable(self) -> None:
         reachable = self._reachable_cells()
         pickup_sets = (self.bow_pickups, self.pistol_pickups, self.arrow_bundles, self.energy_cells)
-        occupied = ({self.player.position} | self.walls | self.gems | self.fires | self.barrels | self.medkits |
+        occupied = ({self.player.position} | self.walls | self.gems | self.fires | self.spikes | self.pits |
+                    self.barrels | self.medkits |
                     {enemy.position for enemy in self.enemies} | set().union(*pickup_sets))
         free = sorted(reachable - occupied, key=lambda p: self._distance(self.player.position, p))
         for pickups in pickup_sets:
@@ -211,7 +222,8 @@ class ArenaEnv:
         ranged: list[tuple[int, Action]] = []
         for direction in DIRECTIONS:
             target = self.add(self.player.position, direction)
-            if (self.in_bounds(target) and target not in self.walls and target not in self.barrels and
+            if (self.in_bounds(target) and target not in self.walls and target not in self.pits and
+                    target not in self.barrels and
                     not self.enemy_at(target)):
                 actions.append(Action(f"move_{direction}"))
             if self.enemy_at(target) or target in self.barrels:
@@ -222,6 +234,7 @@ class ArenaEnv:
             destination = self.add(target, direction)
             if (not self.player.cooldowns.get("dash", 0) and self.in_bounds(target) and
                     self.in_bounds(destination) and target not in self.walls and destination not in self.walls and
+                    target not in self.pits and destination not in self.pits and
                     target not in self.barrels and destination not in self.barrels and
                     not self.enemy_at(target) and not self.enemy_at(destination)):
                 actions.append(Action(f"dash_{direction}"))
@@ -265,6 +278,8 @@ class ArenaEnv:
             reward += self._collect(events)
             if self.player.position in self.fires:
                 reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
+            if self.player.position in self.spikes:
+                reward += self._damage_entity(self.player, self.config.spike_damage, events, "spike") - 3
         elif action.value.startswith("dash_"):
             direction = action.value[-1]
             traversed = []
@@ -277,6 +292,8 @@ class ArenaEnv:
             for position in traversed:
                 if position in self.fires:
                     reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
+                if position in self.spikes:
+                    reward += self._damage_entity(self.player, self.config.spike_damage, events, "spike") - 3
         elif action.value.startswith("attack_"):
             target = self.add(self.player.position, action.value[-1])
             events.append("attack")
@@ -440,6 +457,9 @@ class ArenaEnv:
         events.append(f"shove:{direction}")
         if destination in self.walls:
             return self._damage_entity(enemy, self.config.collision_damage, events, "wall")
+        if destination in self.pits:
+            events.append("pit_fall")
+            return self._damage_entity(enemy, enemy.hp, events, "pit")
         blocker = self.enemy_at(destination)
         if blocker:
             reward = self._damage_entity(blocker, self.config.collision_damage, events, "collision")
@@ -451,6 +471,8 @@ class ArenaEnv:
         enemy.position = destination
         if destination in self.fires:
             return self._damage_entity(enemy, self.config.fire_damage, events, "fire")
+        if destination in self.spikes:
+            return self._damage_entity(enemy, self.config.spike_damage, events, "spike")
         return 0.0
 
     def _plan_enemy_intents(self, enemies: list[Enemy] | None = None) -> None:
@@ -473,7 +495,7 @@ class ArenaEnv:
             dy = self.player.position[1] - enemy.position[1]
             if enemy.enemy_type == EnemyType.CHARGER and (dx == 0 or dy == 0):
                 direction = "e" if dx > 0 else "w" if dx < 0 else "s" if dy > 0 else "n"
-                if self._clear_shot_to_player(enemy.position, direction, self.fires):
+                if self._clear_shot_to_player(enemy.position, direction, self.fires | self.spikes):
                     enemy.intent = Intent(IntentType.CHARGE, direction, self.config.enemy_move_interval,
                                           self.config.charger_damage)
                     continue
@@ -493,6 +515,7 @@ class ArenaEnv:
         while queue:
             position, first = queue.popleft()
             if (position in visited or not self.in_bounds(position) or position in self.walls or position in self.fires or
+                    position in self.spikes or position in self.pits or
                     position in self.barrels or position in occupied or position == self.player.position):
                 continue
             if self._distance(position, self.player.position) == 1:
@@ -527,6 +550,7 @@ class ArenaEnv:
             elif intent.kind == IntentType.MOVE and intent.direction:
                 target = self.add(enemy.position, intent.direction)
                 if (self.in_bounds(target) and target not in self.walls and target not in self.fires and
+                        target not in self.spikes and target not in self.pits and
                         target not in self.barrels and target not in occupied and
                         target != self.player.position):
                     occupied.remove(enemy.position)
@@ -623,6 +647,14 @@ class ArenaEnv:
             if not self.in_bounds(target) or target in self.walls or target in self.fires:
                 events.append("charge_blocked")
                 break
+            if target in self.spikes:
+                events.append("charge_blocked")
+                break
+            if target in self.pits:
+                occupied.discard(enemy.position)
+                events.append("pit_fall")
+                reward += self._damage_entity(enemy, enemy.hp, events, "pit")
+                break
             if target in self.barrels:
                 reward += self._explode_barrel(target, events)
                 break
@@ -666,7 +698,7 @@ class ArenaEnv:
                 target = enemy.position
                 for _ in range(self.config.charger_range):
                     target = self.add(target, intent.direction)
-                    if not self.in_bounds(target) or target in self.walls:
+                    if not self.in_bounds(target) or target in self.walls or target in self.pits:
                         break
                     if target == position:
                         threats.append((f"{label}/charge", intent.power))
@@ -711,6 +743,8 @@ class ArenaEnv:
                                     enemy.stunned) for enemy in self.enemies),
             "gems": tuple(sorted(self.gems)),
             "fires": tuple(sorted(self.fires)),
+            "spikes": tuple(sorted(self.spikes)),
+            "pits": tuple(sorted(self.pits)),
             "barrels": tuple(sorted(self.barrels)),
             "medkits": tuple(sorted(self.medkits)),
             "bow_pickups": tuple(sorted(self.bow_pickups)),

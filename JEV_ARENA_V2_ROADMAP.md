@@ -1365,8 +1365,8 @@ TODO：
 TODO：
 
 - [x] Barrel
-- [ ] Spike
-- [ ] Pit
+- [x] Spike
+- [x] Pit
 - [x] map solver
 - [x] dead-map regeneration
 
@@ -1784,8 +1784,8 @@ NanoJev 很快，但能力有限。
 
 ## P2 — 后续
 
-- [ ] Pit
-- [ ] Spike
+- [x] Pit
+- [x] Spike
 - [ ] Beam Search
 - [ ] Search teacher dataset
 - [ ] MCTS

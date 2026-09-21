@@ -29,6 +29,8 @@ Chaser 按基础节奏追击，Charger 普通移动较慢但冲锋更快，Bombe
 都能引爆，并对范围内玩家、敌人、Bomber 和其它桶产生连锁伤害。
 V2 关卡每轮提供 2 AP：玩家可连续组合推动、移动、攻击、Dash、EMP、治疗或等待；
 AP 用尽后才统一结算敌人 Intent。轮次与剩余 AP 会显示在中文界面、Observation 和 Replay 中。
+第 2 关起加入尖刺地板，踩中会受伤；第 3 关起加入深坑，普通移动无法进入，
+但 Shove、弓箭击退或 Charger 冲锋可令敌人坠坑并立即死亡。怪物寻路会主动避开尖刺与深坑。
 RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。

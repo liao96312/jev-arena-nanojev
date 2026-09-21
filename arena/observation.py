@@ -30,10 +30,14 @@ def encode_state(env: ArenaEnv) -> str:
         enemy = env.enemy_at(target)
         if not env.in_bounds(target) or target in env.walls:
             value = "wall"
+        elif target in env.pits:
+            value = "pit"
         elif enemy:
             value = f"enemy{enemy.hp}"
         elif target in env.fires:
             value = "fire"
+        elif target in env.spikes:
+            value = "spike"
         else:
             value = "safe"
         adjacent.append(f"{name[0].upper()}:{value}")
@@ -48,8 +52,8 @@ def encode_state(env: ArenaEnv) -> str:
     ) or "none"
     memory = env.last_action or "none"
     threats = env.imminent_threats()
-    threat_summary = ("; ".join(f"{label} dmg={power}" for label, power in threats)
-                      if threats else "none")
+    threat_summary = (f"Threat {'; '.join(f'{label} dmg={power}' for label, power in threats)}. "
+                      if threats else "")
     pickups = (list(env.bow_pickups) + list(env.pistol_pickups) + list(env.arrow_bundles) +
                list(env.energy_cells))
     inventory = ""
@@ -60,6 +64,11 @@ def encode_state(env: ArenaEnv) -> str:
     dash_cd = env.player.cooldowns.get("dash", 0)
     emp_cd = env.player.cooldowns.get("emp", 0)
     cooldowns = f"{dash_cd}/{emp_cd}" if emp_cd else str(dash_cd)
+    hazards = ""
+    if env.spikes:
+        hazards += f" s{_nearest(env.player.position, list(env.spikes))}"
+    if env.pits:
+        hazards += f" p{_nearest(env.player.position, list(env.pits))}"
     barrel = f" barrel={_nearest(env.player.position, list(env.barrels))}" if env.barrels else ""
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
@@ -69,9 +78,9 @@ def encode_state(env: ArenaEnv) -> str:
         f"Near e={_nearest(env.player.position, enemy_positions)} "
         f"gem={_nearest(env.player.position, list(env.gems))} "
         f"kit={_nearest(env.player.position, list(env.medkits))} "
-        f"fire={_nearest(env.player.position, list(env.fires))}{barrel}. "
+        f"fire={_nearest(env.player.position, list(env.fires))}{hazards}{barrel}. "
         f"I {intents}. "
-        f"Threat {threat_summary}. "
+        f"{threat_summary}"
         f"# e={len(env.enemies)} g={len(env.gems)} kit={env.player.medkits}."
         f"{inventory}"
     )

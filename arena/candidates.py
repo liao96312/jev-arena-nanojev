@@ -66,6 +66,8 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
             target = env.add(env.player.position, action.value[-1])
             if target in env.fires:
                 description += "; fire"
+            elif target in env.spikes:
+                description += f"; spike damage={env.config.spike_damage}"
             else:
                 description += "; clear"
             if target == env.previous_player_position:
@@ -82,8 +84,12 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
             direction = action.value[-1]
             enemy = env.enemy_at(env.add(env.player.position, direction))
             destination = env.add(enemy.position, direction)
-            if destination in env.fires:
+            if destination in env.pits:
+                description += " into pit; instant kill"
+            elif destination in env.fires:
                 description += f" into fire; damage={env.config.fire_damage}"
+            elif destination in env.spikes:
+                description += f" into spike; damage={env.config.spike_damage}"
             elif destination in env.walls:
                 description += f" into wall; damage={env.config.collision_damage}"
             elif env.enemy_at(destination):
@@ -95,8 +101,12 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
             middle = env.add(env.player.position, direction)
             target = env.add(middle, direction)
             fire_tiles = sum(position in env.fires for position in (middle, target))
+            spike_tiles = sum(position in env.spikes for position in (middle, target))
             description += f"; cd={env.config.dash_cooldown}"
-            description += (f"; fire={fire_tiles}" if fire_tiles else "; fire=0")
+            if fire_tiles:
+                description += f"; fire={fire_tiles}"
+            if spike_tiles:
+                description += f"; spike={spike_tiles}"
             if env.gems:
                 before = min(env._distance(env.player.position, gem) for gem in env.gems)
                 after = min(env._distance(target, gem) for gem in env.gems)
