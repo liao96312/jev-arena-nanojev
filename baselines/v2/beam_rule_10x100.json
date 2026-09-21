@@ -1,0 +1,26 @@
+[
+  {
+    "label": "RuleV2",
+    "episodes": 10,
+    "mean_reward": 69.76,
+    "median_reward": 68.05,
+    "mean_ticks": 83.2,
+    "gems": 26,
+    "kills": 14,
+    "damage": 0,
+    "deaths": 0,
+    "mean_latency_p95_ms": 5.385
+  },
+  {
+    "label": "BeamD6W16",
+    "episodes": 10,
+    "mean_reward": 83.435,
+    "median_reward": 81.4,
+    "mean_ticks": 80.7,
+    "gems": 28,
+    "kills": 18,
+    "damage": 20,
+    "deaths": 0,
+    "mean_latency_p95_ms": 453.46320000000003
+  }
+]

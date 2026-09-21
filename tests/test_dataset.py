@@ -46,6 +46,17 @@ class DatasetTests(unittest.TestCase):
             rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
             self.assertTrue(any(0 < value < 1 for row in rows for value in row["gold_probs"]["action"].values()))
 
+    def test_beam_teacher_exports_soft_values_and_visits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "beam.jsonl"
+            generate(path, records=5, per_seed=1, targets="beam", beam_depth=2, beam_width=4)
+            import json
+            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertTrue(all(row["metadata"]["target_source"] == "beam" for row in rows))
+            self.assertTrue(all(row["metadata"]["action_visits"] for row in rows))
+            self.assertTrue(any(0 < value < 1 for row in rows
+                                for value in row["gold_probs"]["action"].values()))
+
     def test_v2_dataset_contains_tactical_features(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "v2.jsonl"

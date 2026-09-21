@@ -1420,11 +1420,11 @@ NanoJev 不依赖 BFS planner 也能处理部分战术局面。
 
 TODO：
 
-- [ ] state evaluator
-- [ ] depth search
-- [ ] transposition cache
-- [ ] action values
-- [ ] gold distribution
+- [x] state evaluator
+- [x] depth search
+- [x] transposition cache
+- [x] action values
+- [x] gold distribution
 
 验收：
 
@@ -1786,7 +1786,7 @@ NanoJev 很快，但能力有限。
 
 - [x] Pit
 - [x] Spike
-- [ ] Beam Search
+- [x] Beam Search
 - [ ] Search teacher dataset
 - [ ] MCTS
 - [ ] Search distillation

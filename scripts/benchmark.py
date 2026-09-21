@@ -3,12 +3,13 @@ import csv
 import math
 import statistics
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agents import NanoJevAgent, RandomAgent, RuleAgent
+from agents import BeamSearchAgent, NanoJevAgent, RandomAgent, RuleAgent
 from arena import ArenaConfig, ArenaEnv, campaign_config
 
 
@@ -23,14 +24,19 @@ def run(agent_name: str, episodes: int, max_ticks: int = 500, campaign_level: in
         config = replace(campaign_config(campaign_level), max_ticks=max_ticks) if campaign_level else ArenaConfig(max_ticks=max_ticks)
         env = ArenaEnv(config)
         env.reset(seed)
-        agent = RandomAgent(seed) if agent_name == "random" else RuleAgent()
-        reward = 0.0
+        agent = (RandomAgent(seed) if agent_name == "random" else
+                 BeamSearchAgent() if agent_name == "beam" else RuleAgent())
+        reward, latencies = 0.0, []
         while not env.done:
-            reward += env.step(agent.act(env)).reward
+            started = time.perf_counter()
+            action = agent.act(env)
+            latencies.append((time.perf_counter() - started) * 1000)
+            reward += env.step(action).reward
         rows.append({"agent": agent_name, "seed": seed, "reward": round(reward, 3),
                      "ticks": env.tick, "gems": env.gems_collected, "kills": env.kills,
                      "damage": env.damage_taken, "death": int(env.player.hp <= 0),
-                     "latency_p50_ms": 0.0, "latency_p95_ms": 0.0, "mean_entropy": 0.0,
+                     "latency_p50_ms": round(percentile(latencies, .5), 3),
+                     "latency_p95_ms": round(percentile(latencies, .95), 3), "mean_entropy": 0.0,
                      "selector_interventions": 0, "two_step_backtracks": 0, "unique_cells": 0})
     return rows
 
@@ -72,7 +78,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--max-ticks", type=int, default=500)
-    parser.add_argument("--agents", nargs="+", choices=("random", "rule", "nanojev"), default=("random", "rule"))
+    parser.add_argument("--agents", nargs="+", choices=("random", "rule", "beam", "nanojev"), default=("random", "rule"))
     parser.add_argument("--policy", choices=("model", "memory", "hybrid"), default="hybrid")
     parser.add_argument("--max-batch-states", type=int, default=1)
     parser.add_argument("--campaign-level", type=int, default=0)

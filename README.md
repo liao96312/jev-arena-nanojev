@@ -34,6 +34,10 @@ AP 用尽后才统一结算敌人 Intent。轮次与剩余 AP 会显示在中文
 第 2 关起加入尖刺地板，踩中会受伤；第 3 关起加入深坑，普通移动无法进入，
 但 Shove、弓箭击退或 Charger 冲锋可令敌人坠坑并立即死亡。怪物寻路会主动避开尖刺与深坑。
 RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
+离线 Beam Teacher 使用 Depth 6 / Width 16、状态评分和 transposition cache，输出每个动作的
+value、visits 与软策略分布。在第 3 关 10×100 行动固定 seed 验收中，Beam 平均奖励 83.44，
+高于 RuleV2 的 69.76，宝石数 28 对 26；完整结果见
+[`beam_rule_10x100.json`](baselines/v2/beam_rule_10x100.json)。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。
 V2 复杂度基准中 RuleV2 平均分支因子为 7.317，79.92% 状态有至少 6 个动作，抽样状态的
@@ -116,6 +120,8 @@ python scripts/generate_dataset.py --records 100000 --targets rollout `
   --output datasets/generated/arena_rollout_shaped_100k.jsonl
 python scripts/generate_dataset.py --v2 --records 10000 --targets rollout --rollout-horizon 2 `
   --output datasets/generated/arena_v2_rollout_10k.jsonl
+python scripts/generate_dataset.py --v2 --records 1000 --targets beam `
+  --beam-depth 6 --beam-width 16 --output datasets/generated/arena_v2_beam_1k.jsonl
 python scripts/validate_dataset.py datasets/generated/arena_rule_1k.jsonl
 python scripts/audit_tokens.py datasets/generated/arena_rollout_memory_20k.jsonl
 ```
