@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -12,8 +13,21 @@ from arena.renderer import ArenaRenderer
 
 
 def make_agent(name: str, seed: int):
+    if name == "jev":
+        key = os.environ.get("TYPESAFE_API_KEY", "")
+        key_path = Path(os.environ.get("TYPESAFE_API_KEY_FILE", Path.home() / "Desktop" /
+                                       "typesafe-api-key.txt"))
+        if not key and key_path.is_file():
+            key = key_path.read_text(encoding="utf-8").strip()
+        return JevApiAgent(api_key=key)
     return {"random": lambda: RandomAgent(seed), "rule": RuleAgent,
-            "nanojev": NanoJevAgent, "jev": JevApiAgent}[name]()
+            "nanojev": NanoJevAgent}[name]()
+
+
+def switch_agent(name: str, seed: int, pending):
+    if pending:
+        pending.cancel()
+    return make_agent(name, seed), None
 
 
 def decide(agent, env):
@@ -50,7 +64,7 @@ def restart_level(env, seed: int, pending):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", choices=("random", "rule", "nanojev", "jev"), default="rule")
+    parser.add_argument("--agent", choices=("random", "rule", "nanojev", "jev"), default="nanojev")
     parser.add_argument("--seed", type=int, default=61005)
     parser.add_argument("--decision-ms", type=int, default=280)
     args = parser.parse_args()
@@ -99,7 +113,7 @@ def main() -> None:
                     elif command.startswith("agent_"):
                         agent_name = {"agent_1": "random", "agent_2": "rule",
                                       "agent_3": "nanojev", "agent_4": "jev"}[command]
-                        agent = make_agent(agent_name, args.seed)
+                        agent, pending = switch_agent(agent_name, args.seed, pending)
                         generation += 1
                         animation = None
                         probabilities, action_name, reason, error_message = {}, "-", "", ""
@@ -124,8 +138,10 @@ def main() -> None:
                 elif not paused and not animation and now - last_step >= decision_ms:
                     try:
                         action, probabilities, latency, reason = pending.result()
-                    except Exception:
-                        error_message = f"{agent.name} 推理失败，游戏已暂停；按 R 重试"
+                    except Exception as exc:
+                        error_message = ("Jev API 未启用；按 3 切回本地 NanoJev" if
+                                         agent.name == "jev" and "TYPESAFE_API_KEY" in str(exc) else
+                                         f"{agent.name} 推理失败；可切换其他智能体或按 R 重试")
                         paused, pending = True, None
                         continue
                     old_position = env.player.position

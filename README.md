@@ -8,7 +8,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-91%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-93%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -127,8 +127,9 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
 .\.venv\Scripts\python.exe scripts\play.py --agent jev --seed 1
 ```
 
-Jev API 模式从 `TYPESAFE_API_KEY` 环境变量读取密钥；本机启动器也会识别桌面的
-`typesafe-api-key.txt`，密钥不会写入仓库。游戏运行时按 `4` 即可切换。
+游戏默认只启动本地 NanoJev，不读取或调用 Jev API。只有显式按 `4` 时才会从
+`TYPESAFE_API_KEY`、`TYPESAFE_API_KEY_FILE` 或桌面的 `typesafe-api-key.txt` 读取密钥并调用 API；
+按 `1` / `2` / `3` 可随时安全切回本地智能体，密钥不会写入仓库。
 
 记录与重放：
 
@@ -146,7 +147,7 @@ Jev API 模式从 `TYPESAFE_API_KEY` 环境变量读取密钥；本机启动器�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **91 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **93 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

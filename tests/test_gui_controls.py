@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pygame
 
 from arena import ArenaConfig, ArenaEnv
-from scripts.play_gui import keyboard_command, restart_level
+from scripts.play_gui import keyboard_command, restart_level, switch_agent
 
 
 class GuiControlTests(unittest.TestCase):
@@ -25,6 +25,17 @@ class GuiControlTests(unittest.TestCase):
         self.assertIsNone(restart_level(env, 7, pending))
         self.assertTrue(pending.cancelled)
         self.assertEqual((env.tick, env.done, env.player.hp, env.seed), (0, False, 100, 7))
+
+    def test_switching_to_local_agent_cancels_pending_decision(self):
+        pending = SimpleNamespace(cancelled=False)
+        pending.cancel = lambda: setattr(pending, "cancelled", True)
+        remote, pending_after = switch_agent("jev", 7, pending)
+        self.assertTrue(pending.cancelled)
+        self.assertEqual(remote.name, "jev")
+        self.assertIsNone(pending_after)
+        agent, pending_after = switch_agent("rule", 7, pending_after)
+        self.assertEqual(agent.name, "rule")
+        self.assertIsNone(pending_after)
 
 
 if __name__ == "__main__":

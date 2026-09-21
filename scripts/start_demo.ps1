@@ -14,10 +14,6 @@ $checkpoint = $candidates | Where-Object {
 } | Select-Object -First 1
 $nanoJevRoot = Join-Path $projectRoot "third_party\NanoJev"
 $serviceStarted = $false
-$desktopKey = Join-Path ([Environment]::GetFolderPath("Desktop")) "typesafe-api-key.txt"
-if (-not $env:TYPESAFE_API_KEY -and (Test-Path -LiteralPath $desktopKey)) {
-    $env:TYPESAFE_API_KEY = (Get-Content -Raw -LiteralPath $desktopKey).Trim()
-}
 
 try {
     if (-not $checkpoint) {

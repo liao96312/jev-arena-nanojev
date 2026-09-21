@@ -1,6 +1,8 @@
 import io
 import json
+import os
 import unittest
+from unittest.mock import patch
 
 from nanojev_adapter.typesafe_client import TypeSafeJevClient
 
@@ -25,6 +27,13 @@ class FakeOpener:
 
 
 class TypeSafeJevClientTests(unittest.TestCase):
+    def test_missing_key_is_deferred_until_explicit_api_request(self):
+        with patch.dict(os.environ, {"TYPESAFE_API_KEY": ""}):
+            client = TypeSafeJevClient(api_key="")
+        self.assertFalse(client.health()["ready"])
+        with self.assertRaisesRegex(RuntimeError, "TYPESAFE_API_KEY"):
+            client.evaluate({"states": []})
+
     def test_translates_typesafe_response_to_existing_agent_contract(self):
         client = TypeSafeJevClient(api_key="test-key")
         client.opener = FakeOpener()
