@@ -1405,9 +1405,10 @@ TODO：
 - [x] audit tokens
 - [x] 调整 max_length（10k 使用 192；100k 全量审计后使用 256）
 - [x] 10k dataset smoke train
-- [ ] 100k dataset train
-- [ ] benchmark
-- [ ] calibration
+- [x] 100k 数据分层抽样 quick checkpoint（1k / 20 steps / 5 分钟）
+- [ ] 完整 100k dataset train（因 1660S 全量评估耗时过长暂缓）
+- [x] smoke benchmark
+- [x] calibration
 
 验收：
 

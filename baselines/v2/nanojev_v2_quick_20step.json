@@ -1,0 +1,28 @@
+{
+  "checkpoint": "runs/arena_v2_100k_quick_head_20step",
+  "source_dataset": "datasets/generated/arena_v2_rollout_100k.jsonl",
+  "sample": {
+    "records": 1000,
+    "splits": {"train": 700, "dev": 100, "calibration": 50, "test": 100, "ood": 50},
+    "sha256": "c5a85b8ad15f63ee3ed6c74ea37ade0aa9f23a08c15d606e842b07c75340354c"
+  },
+  "training": {
+    "steps": 20,
+    "best_step": 20,
+    "initial_dev_ce": 2.471760981930779,
+    "best_dev_ce": 2.2207776532062837,
+    "test_ce": 2.467581975510197,
+    "ood_ce": 2.264118453446045,
+    "seconds": 301.526022500002,
+    "max_gpu_allocated_gb": 2.516942336,
+    "precision": "fp32",
+    "max_length": 256
+  },
+  "calibration": {
+    "temperature": 54.59815003312116,
+    "boundary_hit": true,
+    "test_ce_after": 2.1833264923670024,
+    "ood_ce_after": 2.144428307643549
+  },
+  "note": "Quick stratified smoke checkpoint; not a full 100k-record training run."
+}

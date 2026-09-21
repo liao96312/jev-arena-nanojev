@@ -5,6 +5,7 @@ $candidates = @(
     (Join-Path $projectRoot "runs\arena_v2_beam_10k_head_500step"),
     (Join-Path $projectRoot "runs\arena_v2_100k_head_500step"),
     (Join-Path $projectRoot "runs\arena_v2_ap_smoke_head_50step"),
+    (Join-Path $projectRoot "runs\arena_v2_100k_quick_head_20step"),
     (Join-Path $projectRoot "runs\arena_rollout_memory_head_50step"),
     (Join-Path $projectRoot "checkpoints\NanoJev\variants\games_gold_seed17")
 )
