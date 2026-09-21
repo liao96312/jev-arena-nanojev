@@ -1,0 +1,20 @@
+{
+  "dataset": "datasets/generated/arena_v2_rollout_10k.jsonl",
+  "dataset_sha256": "ebaa6545c8335d7cd296fc070818aa57b21032772c93a868e97069d8b7d86639",
+  "action_points": 2,
+  "checkpoint": "runs/arena_v2_ap_smoke_head_50step",
+  "best_step": 50,
+  "objective": "gold_distribution",
+  "initial_dev_target_ce": 2.5745267877748015,
+  "best_dev_target_ce": 2.11369757293751,
+  "metrics_by_split": {
+    "dev": {"questions": 1000, "target_ce": 2.11369757293751, "target_kl": 0.2653111657600026, "target_tv": 0.2629434845238476},
+    "calibration": {"questions": 500, "target_ce": 2.060179968702464, "target_kl": 0.2866778949654939, "target_tv": 0.2766906735696512},
+    "test": {"questions": 1000, "target_ce": 2.1485703657736055, "target_kl": 0.252223091418115, "target_tv": 0.2574138550866889},
+    "ood": {"questions": 500, "target_ce": 2.154484540371242, "target_kl": 0.22374192936137452, "target_tv": 0.23872951347351937}
+  },
+  "training_seconds": 2418.3043690000013,
+  "max_gpu_allocated_gb": 2.525518848,
+  "gpu": "NVIDIA GeForce GTX 1660 SUPER",
+  "command": "python third_party/NanoJev/scripts/train_pipeline_decisions.py --input datasets/generated/arena_v2_rollout_10k.jsonl --output-dir runs/arena_v2_ap_smoke_head_50step --init-checkpoint checkpoints/NanoJev/variants/games_gold_seed17 --objective gold_distribution --loss ce --freeze-backbone --backbone-lr 0 --head-steps 0 --steps 50 --batch-questions 8 --microbatch-questions 1 --max-microbatch-tokens 4096 --eval-every 50 --max-length 192 --head-lr 2e-4 --precision fp32"
+}

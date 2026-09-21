@@ -692,16 +692,16 @@ ap_remaining
 
 ## 8.5 TODO
 
-- [ ] Arena 增加 round
-- [ ] Arena 增加 ap_remaining
-- [ ] 每 Round 重置 AP
-- [ ] AP=0 后 resolve enemy intents
-- [ ] WAIT 消耗 1 AP
-- [ ] HEAL 消耗 1 AP
-- [ ] 技能分别配置 AP cost
-- [ ] Observation 输出 AP
-- [ ] Replay 保存 round/AP
-- [ ] GUI 显示 AP
+- [x] Arena 增加 round
+- [x] Arena 增加 ap_remaining
+- [x] 每 Round 重置 AP
+- [x] AP=0 后 resolve enemy intents
+- [x] WAIT 消耗 1 AP
+- [x] HEAL 消耗 1 AP
+- [x] 技能分别配置 AP cost
+- [x] Observation 输出 AP
+- [x] Replay 保存 round/AP
+- [x] GUI 显示 AP
 
 ---
 
@@ -1346,11 +1346,11 @@ TODO：
 
 TODO：
 
-- [ ] round
-- [ ] AP
-- [ ] resolve timing
-- [ ] GUI
-- [ ] Replay
+- [x] round
+- [x] AP
+- [x] resolve timing
+- [x] GUI
+- [x] Replay
 
 验收：
 
@@ -1776,7 +1776,7 @@ NanoJev 很快，但能力有限。
 - [x] 玩家持久远程武器与有限弹药
 - [x] EMP
 - [x] Cooldown
-- [ ] 2 AP
+- [x] 2 AP
 - [x] Barrel
 - [x] Map solvability check
 - [x] Dataset V2

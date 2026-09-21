@@ -53,6 +53,7 @@ class DatasetTests(unittest.TestCase):
             import json
             rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
             self.assertTrue(all(row["family_id"] == "arena_v2" for row in rows))
+            self.assertTrue(all("ap=" in row["state"] for row in rows))
             self.assertTrue(any("W bow=" in row["state"] for row in rows))
             self.assertTrue(any("barrel=" in row["state"] for row in rows))
             self.assertTrue(any(any(action.startswith("shoot_") for action in row["questions"]["action"]["criteria"])

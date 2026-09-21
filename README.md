@@ -27,6 +27,8 @@ Chaser 按基础节奏追击，Charger 普通移动较慢但冲锋更快，Bombe
 地图生成会验证出生点至少两个出口、全部宝石可达且存在立即可存活动作；死图最多重生成 20 次。
 第 2 关起会出现可阻挡移动和射线的爆炸桶；近战、远程武器、冲锋、Archer 或 Bomber
 都能引爆，并对范围内玩家、敌人、Bomber 和其它桶产生连锁伤害。
+V2 关卡每轮提供 2 AP：玩家可连续组合推动、移动、攻击、Dash、EMP、治疗或等待；
+AP 用尽后才统一结算敌人 Intent。轮次与剩余 AP 会显示在中文界面、Observation 和 Replay 中。
 RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选择动作，能利用 Shove、躲避爆炸并使用 Dash。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。
@@ -34,11 +36,14 @@ V2 复杂度基准中 RuleV2 平均分支因子为 7.317，79.92% 状态有至�
 立即/两步必死率均为 0；完整指标见 [`baselines/v2/complexity_100x100.json`](baselines/v2/complexity_100x100.json)。
 Observation V2 会输出最近两个敌人的类型短码、Intent 与倒计时，并用环境规则标记即时威胁；
 Candidate V2 会在克隆环境中预演一回合，给出实际 HP/击杀/宝石变化和下一拍伤害。
-10k 条 V2 rollout 的候选路径 token 审计为 P50/P95/最大值 155/171/181，结果与数据哈希见
+10k 条 2 AP V2 rollout 的候选路径 token 审计为 P50/P95/最大值 167/180/192，结果与数据哈希见
 [`arena_v2_rollout_10k.manifest.json`](datasets/generated/arena_v2_rollout_10k.manifest.json)，可继续使用 `max_length=192`。
-GTX 1660S 上的 50-step head-only 烟测将 dev CE 从 2.5932 降至 2.1505，test/OOD CE 为
+pre-AP 数据在 GTX 1660S 上的 50-step head-only 烟测将 dev CE 从 2.5932 降至 2.1505，test/OOD CE 为
 2.1711/2.1520，峰值显存 2.52GB；完整指标见
 [`nanojev_v2_smoke_50step.json`](baselines/v2/nanojev_v2_smoke_50step.json)。
+2 AP 数据的对应烟测将 dev CE 从 2.5745 降至 2.1137，test/OOD CE 为 2.1486/2.1545，
+峰值显存 2.53GB；完整指标见
+[`nanojev_v2_ap_smoke_50step.json`](baselines/v2/nanojev_v2_ap_smoke_50step.json)。
 
 Windows 直接双击项目根目录的 **`启动游戏.cmd`** 即可自动启动模型和中文游戏界面。
 

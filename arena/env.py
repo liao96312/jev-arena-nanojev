@@ -47,6 +47,9 @@ class ArenaConfig:
     emp_radius: int = 1
     barrel_damage: int = 20
     barrel_radius: int = 1
+    action_points: int = 1
+    dash_ap_cost: int = 1
+    emp_ap_cost: int = 1
     finish_on_all_gems: bool = False
 
 
@@ -71,6 +74,7 @@ def campaign_config(level: int) -> ArenaConfig:
         charger_ratio=min(0.45, 0.2 + level * 0.03),
         bomber_ratio=min(0.25, 0.1 + level * 0.02),
         archer_ratio=min(0.2, 0.08 + level * 0.02),
+        action_points=2,
         finish_on_all_gems=True,
     )
 
@@ -90,14 +94,17 @@ class ArenaEnv:
 
     def reset(self, seed: int = 0) -> dict:
         if (self.config.enemy_move_interval < 1 or self.config.charger_range < 1 or
-                self.config.archer_countdown < 1):
-            raise ValueError("enemy intervals and ranges must be positive")
+                self.config.archer_countdown < 1 or self.config.action_points < 1 or
+                not 1 <= self.config.dash_ap_cost <= self.config.action_points or
+                not 1 <= self.config.emp_ap_cost <= self.config.action_points):
+            raise ValueError("enemy intervals, ranges, and AP costs must be valid")
         ratios = (self.config.charger_ratio, self.config.bomber_ratio, self.config.archer_ratio)
         if any(not 0 <= ratio <= 1 for ratio in ratios) or sum(ratios) > 1:
             raise ValueError("enemy type ratios must be between zero and one and sum to at most one")
         self.seed = seed
         self.rng = random.Random(seed)
         self.tick = self.score = self.gems_collected = self.kills = self.environment_kills = 0
+        self.round, self.ap_remaining = 1, self.config.action_points
         self.damage_taken = 0
         self.previous_player_position: tuple[int, int] | None = None
         self.last_action: str | None = None
@@ -166,6 +173,8 @@ class ArenaEnv:
         for action in self.legal_actions():
             simulation = self.clone()
             simulation.step(action)
+            if not simulation.done and simulation.ap_remaining < simulation.config.action_points:
+                simulation.step(Action.WAIT)
             if simulation.player.hp > 0:
                 return True
         return False
@@ -231,7 +240,14 @@ class ArenaEnv:
         ranged.sort(key=lambda item: item[0])
         actions.extend(action for _, action in ranged[:max(0, 11 - len(actions))])
         actions.append(Action.WAIT)
-        return actions
+        return [action for action in actions if self._action_cost(action) <= self.ap_remaining]
+
+    def _action_cost(self, action: Action) -> int:
+        if action.value.startswith("dash_"):
+            return self.config.dash_ap_cost
+        if action == Action.EMP:
+            return self.config.emp_ap_cost
+        return 1
 
     def step(self, action: Action | str) -> StepResult:
         if self.done:
@@ -239,8 +255,8 @@ class ArenaEnv:
         action = Action(action)
         if action not in self.legal_actions():
             raise ValueError(f"illegal action: {action}")
-        self._tick_cooldowns()
-
+        if self.ap_remaining == self.config.action_points:
+            self._tick_cooldowns()
         origin = self.player.position
         reward = 0.05
         events: list[str] = []
@@ -290,8 +306,13 @@ class ArenaEnv:
             self.player.cooldowns["emp"] = self.config.emp_cooldown
             events.append(f"emp:{len(affected)}")
 
-        if self.player.hp > 0:
+        self.ap_remaining -= self._action_cost(action)
+        if self.player.hp > 0 and self.ap_remaining == 0:
             reward += self._resolve_enemy_intents(events)
+            events.append("round_end")
+            if self.player.hp > 0:
+                self.round += 1
+                self.ap_remaining = self.config.action_points
         self.previous_player_position = origin
         self.last_action = action.value
         self.tick += 1
@@ -669,6 +690,8 @@ class ArenaEnv:
         return {
             "seed": self.seed,
             "tick": self.tick,
+            "round": self.round,
+            "ap_remaining": self.ap_remaining,
             "hp": self.player.hp,
             "score": self.score,
             "position": self.player.position,

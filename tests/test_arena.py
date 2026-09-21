@@ -95,6 +95,37 @@ class ArenaTests(unittest.TestCase):
         self.assertEqual(env.player.hp, 95)
         self.assertIn("damage:enemy:5", result.events)
 
+    def test_two_ap_delays_enemy_resolution_until_round_end(self):
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, enemy_move_interval=1, action_points=2))
+        env.player.position = (2, 2)
+        env.enemies = [Enemy((2, 4))]
+        env._plan_enemy_intents()
+
+        first = env.step(Action.WAIT)
+        self.assertEqual((env.enemies[0].position, env.round, env.ap_remaining), ((2, 4), 1, 1))
+        self.assertNotIn("round_end", first.events)
+
+        second = env.step(Action.WAIT)
+        self.assertEqual((env.enemies[0].position, env.round, env.ap_remaining), ((2, 3), 2, 2))
+        self.assertIn("round_end", second.events)
+
+    def test_heal_wait_and_configured_skill_ap_costs(self):
+        env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, action_points=2, dash_ap_cost=2, emp_ap_cost=2))
+        env.player.position, env.player.hp, env.player.medkits = (2, 2), 50, 1
+        env.enemies = [Enemy((3, 2))]
+        env._plan_enemy_intents()
+        env.step(Action.HEAL)
+        self.assertEqual((env.player.hp, env.ap_remaining), (85, 1))
+        self.assertFalse(any(action.value.startswith("dash_") for action in env.legal_actions()))
+        self.assertNotIn(Action.EMP, env.legal_actions())
+        env.step(Action.WAIT)
+        self.assertEqual((env.round, env.ap_remaining), (2, 2))
+
+        from arena.observation import encode_state
+        self.assertIn("r=2 ap=2/2", encode_state(env))
+
     def test_every_enemy_type_routes_around_wall(self):
         config = ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
                              medkits=0, enemy_move_interval=1)

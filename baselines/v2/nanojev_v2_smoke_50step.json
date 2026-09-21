@@ -1,6 +1,7 @@
 {
   "dataset": "datasets/generated/arena_v2_rollout_10k.jsonl",
   "dataset_sha256": "d114a2325a8a03a6c9f1bf5c072cd749bbcf5e40ce550dc90af5ca466fd0bb7a",
+  "action_points": 1,
   "checkpoint": "runs/arena_v2_smoke_head_50step",
   "best_step": 50,
   "objective": "gold_distribution",

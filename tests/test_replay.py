@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,6 +24,8 @@ class ReplayTests(unittest.TestCase):
                 logger.log(state, candidates, env, action.value, result)
             summary = verify(path)
             self.assertTrue(summary["verified"])
+            first = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual((first["round"], first["ap_remaining"]), (1, 1))
             self.assertEqual(summary["steps"], env.tick)
 
     def test_replay_reproduces_ranged_weapon_state(self):

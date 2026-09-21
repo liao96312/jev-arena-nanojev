@@ -19,6 +19,8 @@ class ReplayLogger:
             "config": asdict(env.config),
             "initial_loadout": state["loadout"],
             "tick": state["tick"],
+            "round": state["round"],
+            "ap_remaining": state["ap_remaining"],
             "state": state,
             "next_state": env.observation(),
             "candidate_actions": candidate_actions,

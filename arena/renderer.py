@@ -137,7 +137,8 @@ class ArenaRenderer:
 
         footer_y = self.map_height + 15
         status = (f"生命 {env.player.hp:3}/100   总分 {score_offset + env.score:3}   宝石 {env.gems_collected}   "
-                  f"击败 {env.kills}   回合 {env.tick}/{env.config.max_ticks}")
+                  f"击败 {env.kills}   轮次 {env.round}   AP {env.ap_remaining}/{env.config.action_points}   "
+                  f"行动 {env.tick}/{env.config.max_ticks}")
         self._text(status, 12, footer_y, colors["text"])
         controls = "[1] 随机  [2] 规则  [3] NanoJev  [[ / ]] 调速  [空格] 暂停  [R] 重开  [Esc] 退出"
         self._text(controls + ("  已暂停/结束" if paused else ""), 12, footer_y + 28,

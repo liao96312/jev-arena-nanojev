@@ -63,6 +63,7 @@ def encode_state(env: ArenaEnv) -> str:
     barrel = f" barrel={_nearest(env.player.position, list(env.barrels))}" if env.barrels else ""
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
+        f"r={env.round} ap={env.ap_remaining}/{env.config.action_points} "
         f"cd={cooldowns} last={memory}. "
         f"Adj {','.join(adjacent)}. "
         f"Near e={_nearest(env.player.position, enemy_positions)} "
