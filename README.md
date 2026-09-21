@@ -8,7 +8,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-89%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-90%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -90,7 +90,7 @@ git clone --branch jev-arena-1660s https://github.com/liao96312/NanoJev.git thir
 
 | 按键 | 功能 |
 | --- | --- |
-| `1` / `2` / `3` | 切换 Random / Rule / NanoJev |
+| `1` / `2` / `3` / `4` | 切换 Random / Rule / NanoJev / Jev API |
 | `←` / `→` | 调整决策速度 |
 | `Space` | 暂停或继续 |
 | `R` / `F5` | 重开当前关；也可点击右下角按钮 |
@@ -124,7 +124,11 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
 .\.venv\Scripts\python.exe scripts\play.py --agent random --seed 1
 .\.venv\Scripts\python.exe scripts\play.py --agent rule --seed 1
 .\.venv\Scripts\python.exe scripts\play.py --agent nanojev --seed 1
+.\.venv\Scripts\python.exe scripts\play.py --agent jev --seed 1
 ```
+
+Jev API 模式从 `TYPESAFE_API_KEY` 环境变量读取密钥；本机启动器也会识别桌面的
+`typesafe-api-key.txt`，密钥不会写入仓库。游戏运行时按 `4` 即可切换。
 
 记录与重放：
 
@@ -142,7 +146,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与 NanoJev 适配共有 **89 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **90 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

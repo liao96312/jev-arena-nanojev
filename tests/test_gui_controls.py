@@ -14,6 +14,7 @@ class GuiControlTests(unittest.TestCase):
         self.assertEqual(keyboard_command(
             pygame, SimpleNamespace(key=0, unicode="", scancode=pygame.KSCAN_R)), "restart")
         self.assertEqual(keyboard_command(pygame, SimpleNamespace(key=pygame.K_KP3, unicode="")), "agent_3")
+        self.assertEqual(keyboard_command(pygame, SimpleNamespace(key=pygame.K_4, unicode="4")), "agent_4")
         self.assertEqual(keyboard_command(pygame, SimpleNamespace(key=pygame.K_RIGHT, unicode="")), "faster")
 
     def test_restart_resets_finished_level_and_cancels_pending_work(self):

@@ -6,7 +6,7 @@ from pathlib import Path
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
 
-AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev"}
+AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
     "move_n": "向上移动", "move_s": "向下移动", "move_w": "向左移动", "move_e": "向右移动",
     "attack_n": "向上攻击", "attack_s": "向下攻击", "attack_w": "向左攻击", "attack_e": "向右攻击",
@@ -41,7 +41,7 @@ class ArenaRenderer:
         pygame.init()
         self.map_width, self.map_height = width * self.CELL, height * self.CELL
         self.screen = pygame.display.set_mode((self.map_width + self.PANEL, self.map_height + self.FOOTER))
-        pygame.display.set_caption("Jev 竞技场 · NanoJev 决策演示")
+        pygame.display.set_caption("Jev 竞技场 · AI 决策演示")
         font_path = "C:/Windows/Fonts/msyh.ttc"
         self.font = pygame.font.Font(font_path, 22)
         self.small = pygame.font.Font(font_path, 17)
@@ -141,7 +141,7 @@ class ArenaRenderer:
             self.screen.blit(surface, surface.get_rect(center=background.center))
 
         left = self.map_width + 20
-        self._text(f"第 {level} 关 · NanoJev", left, 20, colors["text"])
+        self._text(f"第 {level} 关 · Jev Arena", left, 20, colors["text"])
         self._text(f"智能体：{AGENT_NAMES.get(agent, agent)}", left, 55, colors["muted"])
         self._text(f"动作：{ACTION_NAMES.get(action, action)}", left, 80, colors["text"])
         self._text(f"推理耗时：{latency_ms:.1f} 毫秒", left, 105, colors["muted"])
@@ -174,7 +174,7 @@ class ArenaRenderer:
                   f"击败 {env.kills}   轮次 {env.round}   AP {env.ap_remaining}/{env.config.action_points}   "
                   f"行动 {env.tick}/{env.config.max_ticks}")
         self._text(status, 12, footer_y, colors["text"])
-        controls = "[1] 随机  [2] 规则  [3] NanoJev  [←/→] 调速  [空格] 暂停  [Esc] 退出"
+        controls = "[1] 随机  [2] 规则  [3] NanoJev  [4] Jev API  [←/→] 调速  [空格] 暂停  [Esc] 退出"
         self._text(controls + ("  已暂停/结束" if paused else ""), 12, footer_y + 28,
                    colors["muted"], small=True)
         pg.draw.rect(self.screen, (45, 105, 165), self.restart_button, border_radius=6)

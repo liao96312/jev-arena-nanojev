@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agents import NanoJevAgent, RandomAgent, RuleAgent
+from agents import JevApiAgent, NanoJevAgent, RandomAgent, RuleAgent
 from arena import ArenaEnv
 from arena.observation import encode_state
 from arena.replay import ReplayLogger
@@ -12,14 +12,14 @@ from arena.replay import ReplayLogger
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", choices=("random", "rule", "nanojev"), default="rule")
+    parser.add_argument("--agent", choices=("random", "rule", "nanojev", "jev"), default="rule")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--replay", type=Path)
     args = parser.parse_args()
     env = ArenaEnv()
     env.reset(args.seed)
     agent = {"random": lambda: RandomAgent(args.seed), "rule": RuleAgent,
-             "nanojev": NanoJevAgent}[args.agent]()
+             "nanojev": NanoJevAgent, "jev": JevApiAgent}[args.agent]()
     logger = ReplayLogger(args.replay) if args.replay else None
     total = 0.0
     while not env.done:

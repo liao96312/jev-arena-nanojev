@@ -5,14 +5,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agents import NanoJevAgent, RandomAgent, RuleAgent
+from agents import JevApiAgent, NanoJevAgent, RandomAgent, RuleAgent
 from arena import ArenaEnv, campaign_config
 from arena.campaign_save import CampaignSave, load_campaign, save_campaign
 from arena.renderer import ArenaRenderer
 
 
 def make_agent(name: str, seed: int):
-    return {"random": lambda: RandomAgent(seed), "rule": RuleAgent, "nanojev": NanoJevAgent}[name]()
+    return {"random": lambda: RandomAgent(seed), "rule": RuleAgent,
+            "nanojev": NanoJevAgent, "jev": JevApiAgent}[name]()
 
 
 def decide(agent, env):
@@ -34,7 +35,7 @@ def keyboard_command(pg, event) -> str:
     if key in (pg.K_RIGHTBRACKET, pg.K_EQUALS, pg.K_KP_PLUS, pg.K_RIGHT):
         return "faster"
     for number, keys in ((1, (pg.K_1, pg.K_KP1)), (2, (pg.K_2, pg.K_KP2)),
-                         (3, (pg.K_3, pg.K_KP3))):
+                         (3, (pg.K_3, pg.K_KP3)), (4, (pg.K_4, pg.K_KP4))):
         if key in keys or typed == str(number):
             return f"agent_{number}"
     return ""
@@ -49,7 +50,7 @@ def restart_level(env, seed: int, pending):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", choices=("random", "rule", "nanojev"), default="rule")
+    parser.add_argument("--agent", choices=("random", "rule", "nanojev", "jev"), default="rule")
     parser.add_argument("--seed", type=int, default=61005)
     parser.add_argument("--decision-ms", type=int, default=280)
     args = parser.parse_args()
@@ -96,7 +97,8 @@ def main() -> None:
                         probabilities, action_name, reason, error_message = {}, "restart", "", ""
                         paused, last_step = False, now
                     elif command.startswith("agent_"):
-                        agent_name = {"agent_1": "random", "agent_2": "rule", "agent_3": "nanojev"}[command]
+                        agent_name = {"agent_1": "random", "agent_2": "rule",
+                                      "agent_3": "nanojev", "agent_4": "jev"}[command]
                         agent = make_agent(agent_name, args.seed)
                         generation += 1
                         animation = None
@@ -123,7 +125,7 @@ def main() -> None:
                     try:
                         action, probabilities, latency, reason = pending.result()
                     except Exception:
-                        error_message = "NanoJev 推理失败，游戏已暂停；按 R 重试"
+                        error_message = f"{agent.name} 推理失败，游戏已暂停；按 R 重试"
                         paused, pending = True, None
                         continue
                     old_position = env.player.position
