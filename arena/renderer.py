@@ -128,7 +128,8 @@ class ArenaRenderer:
                 continue
             if event.startswith("explosion_at:"):
                 parts = event.split(":")
-                self._explosion_effect((int(parts[1]), int(parts[2])), progress)
+                self._explosion_effect((int(parts[1]), int(parts[2])), progress,
+                                       int(parts[3]) if len(parts) > 3 else 1)
                 continue
             if not event.startswith("archer_shot:"):
                 continue
@@ -228,12 +229,37 @@ class ArenaRenderer:
                   round((position[1] + direction[1] * .62) * self.CELL + self.CELL / 2))
         self.screen.blit(sprite, sprite.get_rect(center=center))
 
-    def _explosion_effect(self, position: tuple[int, int], progress: float) -> None:
+    def _explosion_effect(self, position: tuple[int, int], progress: float, blast_radius: int = 1) -> None:
         center = (round(position[0] * self.CELL + self.CELL / 2),
                   round(position[1] * self.CELL + self.CELL / 2))
-        radius = max(3, round(self.CELL * (0.25 + progress * 1.15)))
-        self.pg.draw.circle(self.screen, (255, 105, 45), center, radius, max(2, round(6 * (1 - progress))))
-        self.pg.draw.circle(self.screen, (255, 225, 90), center, max(2, radius // 2), 2)
+        maximum = (blast_radius + .45) * self.CELL
+        radius = max(4, round(maximum * min(1, progress * 1.7)))
+        overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+        fade = max(0, 1 - progress)
+        self.pg.draw.circle(overlay, (255, 55, 20, round(70 * fade)), center, radius)
+        self.pg.draw.circle(overlay, (255, 190, 45, round(230 * fade)), center, radius,
+                            max(2, round(8 * fade)))
+        core = max(3, round(radius * (.55 - .25 * progress)))
+        for index in range(7):
+            angle = index * math.tau / 7
+            lobe = max(3, round(core * (.42 + .08 * (index % 2))))
+            offset = core * .62
+            self.pg.draw.circle(overlay, (255, 105 + index * 9, 25, round(210 * fade)),
+                                (center[0] + math.cos(angle) * offset,
+                                 center[1] + math.sin(angle) * offset), lobe)
+        self.pg.draw.circle(overlay, (255, 235, 145, round(245 * fade)), center, core)
+        for index in range(12):
+            angle = index * math.tau / 12
+            start = radius * .45
+            end = radius * (1 + .18 * (index % 3))
+            self.pg.draw.line(overlay, (255, 125, 35, round(220 * fade)),
+                              (center[0] + math.cos(angle) * start, center[1] + math.sin(angle) * start),
+                              (center[0] + math.cos(angle) * end, center[1] + math.sin(angle) * end), 3)
+        reach = (blast_radius + .5) * self.CELL * min(1, progress * 1.7)
+        diamond = [(center[0], center[1] - reach), (center[0] + reach, center[1]),
+                   (center[0], center[1] + reach), (center[0] - reach, center[1])]
+        self.pg.draw.polygon(overlay, (255, 205, 70, round(210 * fade)), diamond, 3)
+        self.screen.blit(overlay, (0, 0))
 
     def _dash_effect(self, position: tuple[float, float], direction: str, progress: float) -> None:
         center = (round(position[0] * self.CELL + self.CELL / 2),
@@ -307,14 +333,23 @@ class ArenaRenderer:
         if not intent or intent.kind in (IntentType.MOVE, IntentType.WAIT):
             return
         if intent.kind == IntentType.EXPLODE:
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            pulse = .5 + .5 * math.sin(self.pg.time.get_ticks() / 130)
+            alpha = round((65 if intent.countdown > 1 else 105) + pulse * 35)
             for y in range(enemy.position[1] - env.config.bomber_radius,
                            enemy.position[1] + env.config.bomber_radius + 1):
                 for x in range(enemy.position[0] - env.config.bomber_radius,
                                enemy.position[0] + env.config.bomber_radius + 1):
                     if env.in_bounds((x, y)) and env._distance(enemy.position, (x, y)) <= env.config.bomber_radius:
-                        self.pg.draw.rect(self.screen, (205, 70, 235),
-                                          self.pg.Rect(x * self.CELL + 3, y * self.CELL + 3,
-                                                       self.CELL - 6, self.CELL - 6), 2, border_radius=5)
+                        rect = self.pg.Rect(x * self.CELL + 2, y * self.CELL + 2,
+                                            self.CELL - 4, self.CELL - 4)
+                        self.pg.draw.rect(overlay, (255, 65, 35, alpha), rect, border_radius=7)
+                        self.pg.draw.rect(overlay, (255, 190, 55, 210), rect, 2, border_radius=7)
+            center = (enemy.position[0] * self.CELL + self.CELL // 2,
+                      enemy.position[1] * self.CELL + self.CELL // 2)
+            ring = round(self.CELL * (.35 + .12 * pulse))
+            self.pg.draw.circle(overlay, (255, 235, 145, 235), center, ring, 3)
+            self.screen.blit(overlay, (0, 0))
             return
         if not intent.direction:
             return

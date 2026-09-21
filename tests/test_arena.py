@@ -142,7 +142,7 @@ class ArenaTests(unittest.TestCase):
 
     def test_every_enemy_type_routes_around_wall(self):
         config = ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
-                             medkits=0, enemy_move_interval=1)
+                             medkits=0, enemy_move_interval=1, bomber_radius=1)
         for enemy_type in EnemyType:
             with self.subTest(enemy_type=enemy_type):
                 env = ArenaEnv(config)
@@ -305,6 +305,7 @@ class ArenaTests(unittest.TestCase):
         self.assertNotIn(victim, env.enemies)
         self.assertEqual(env.environment_kills, 1)
         self.assertIn("bomber_explode", result.events)
+        self.assertIn("explosion_at:2:2:2", result.events)
 
     def test_archer_shot_is_telegraphed_and_dodgeable(self):
         env = ArenaEnv(ArenaConfig(width=7, height=5, walls=0, enemies=0, gems=0, fires=0,
@@ -623,11 +624,11 @@ class ArenaTests(unittest.TestCase):
         self.assertNotIn("bomber_explode", result.events)
 
     def test_rule_uses_emp_when_surrounded_by_blasts(self):
-        env = ArenaEnv(ArenaConfig(width=3, height=3, walls=0, enemies=0, gems=0, fires=0,
-                                   medkits=0, charger_ratio=0, bomber_ratio=0))
-        env.player.position = (1, 1)
+        env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, charger_ratio=0, bomber_ratio=0, emp_radius=2))
+        env.player.position = (2, 2)
         env.enemies = [Enemy(position, enemy_type=EnemyType.BOMBER)
-                       for position in ((1, 0), (1, 2), (0, 1), (2, 1))]
+                       for position in ((2, 0), (2, 4), (0, 2), (4, 2))]
         env._plan_enemy_intents()
         for enemy in env.enemies:
             enemy.intent.countdown = 1

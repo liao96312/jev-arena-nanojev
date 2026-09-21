@@ -41,7 +41,7 @@ class ArenaConfig:
     charger_damage: int = 10
     collision_damage: int = 15
     bomber_damage: int = 20
-    bomber_radius: int = 1
+    bomber_radius: int = 2
     archer_damage: int = 12
     archer_countdown: int = 2
     spawn_protection_rounds: int = 0
@@ -612,7 +612,7 @@ class ArenaEnv:
             return 0.0
         self.barrels.remove(center)
         events.append("barrel_explode")
-        events.append(f"explosion_at:{center[0]}:{center[1]}")
+        events.append(f"explosion_at:{center[0]}:{center[1]}:{self.config.barrel_radius}")
         reward = 0.0
         if self._distance(center, self.player.position) <= self.config.barrel_radius:
             reward += self._damage_entity(self.player, self.config.barrel_damage, events, "barrel")
@@ -668,7 +668,7 @@ class ArenaEnv:
         center = bomber.position
         self.enemies.remove(bomber)
         events.append("bomber_explode")
-        events.append(f"explosion_at:{center[0]}:{center[1]}")
+        events.append(f"explosion_at:{center[0]}:{center[1]}:{self.config.bomber_radius}")
         reward = 0.0
         if self._distance(center, self.player.position) <= self.config.bomber_radius:
             reward += self._damage_entity(self.player, damage, events, "explosion")
