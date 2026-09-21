@@ -8,7 +8,7 @@ $checkpoint = Join-Path $projectRoot "runs\arena_v2_100k_head_500step"
 
 if (-not (Test-Path -LiteralPath $dataset)) {
     & $python (Join-Path $projectRoot "scripts\generate_dataset.py") --v2 --records 100000 `
-        --targets rollout --rollout-horizon 2 --output $partial
+        --targets rollout --rollout-horizon 2 --output $partial --resume
     if ($LASTEXITCODE) { throw "100k 数据生成失败" }
     Move-Item -LiteralPath $partial -Destination $dataset
 }

@@ -20,6 +20,15 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual(summary, validate_dataset(path))
             self.assertEqual(set(summary["splits"]), {"train", "dev", "calibration", "test", "ood"})
 
+    def test_generation_resumes_partial_dataset_without_duplicate_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "resume.jsonl"
+            generate(path, records=20, per_seed=2)
+            summary = generate(path, records=40, per_seed=2, resume=True)
+            self.assertEqual(summary["records"], 40)
+            self.assertEqual(summary["splits"], {"train": 28, "dev": 4, "calibration": 2,
+                                                  "test": 4, "ood": 2})
+
     def test_rollout_soft_targets_penalize_fire(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0, medkits=0))
         env.player.position = (2, 2)
@@ -56,6 +65,16 @@ class DatasetTests(unittest.TestCase):
             self.assertTrue(all(row["metadata"]["action_visits"] for row in rows))
             self.assertTrue(any(0 < value < 1 for row in rows
                                 for value in row["gold_probs"]["action"].values()))
+
+    def test_mcts_teacher_exports_visit_distribution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mcts.jsonl"
+            generate(path, records=5, per_seed=1, targets="mcts",
+                     mcts_iterations=16, mcts_rollout_depth=1)
+            import json
+            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertTrue(all(row["metadata"]["target_source"] == "mcts" for row in rows))
+            self.assertTrue(all(sum(row["metadata"]["action_visits"].values()) == 16 for row in rows))
 
     def test_v2_dataset_contains_tactical_features(self):
         with tempfile.TemporaryDirectory() as directory:

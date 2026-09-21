@@ -1,0 +1,26 @@
+[
+  {
+    "label": "RuleV2",
+    "episodes": 3,
+    "mean_reward": 63.53333333333333,
+    "median_reward": 67.5,
+    "mean_ticks": 70.66666666666667,
+    "gems": 10,
+    "kills": 1,
+    "damage": 0,
+    "deaths": 0,
+    "mean_latency_p95_ms": 5.573333333333333
+  },
+  {
+    "label": "MCTS128",
+    "episodes": 3,
+    "mean_reward": 79.33333333333333,
+    "median_reward": 75.0,
+    "mean_ticks": 100.0,
+    "gems": 8,
+    "kills": 6,
+    "damage": 0,
+    "deaths": 0,
+    "mean_latency_p95_ms": 333.2063333333333
+  }
+]

@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agents import BeamSearchAgent, NanoJevAgent, RandomAgent, RuleAgent
+from agents import BeamSearchAgent, MCTSAgent, NanoJevAgent, RandomAgent, RuleAgent
 from arena import ArenaConfig, ArenaEnv, campaign_config
 
 
@@ -18,7 +18,8 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[round((len(ordered) - 1) * fraction)] if ordered else 0.0
 
 
-def run(agent_name: str, episodes: int, max_ticks: int = 500, campaign_level: int = 0) -> list[dict]:
+def run(agent_name: str, episodes: int, max_ticks: int = 500, campaign_level: int = 0,
+        mcts_iterations: int = 128, mcts_rollout_depth: int = 4) -> list[dict]:
     rows = []
     for seed in range(episodes):
         config = replace(campaign_config(campaign_level), max_ticks=max_ticks) if campaign_level else ArenaConfig(max_ticks=max_ticks)
@@ -26,6 +27,8 @@ def run(agent_name: str, episodes: int, max_ticks: int = 500, campaign_level: in
         env.reset(seed)
         agent = (RandomAgent(seed) if agent_name == "random" else
                  BeamSearchAgent() if agent_name == "beam" else RuleAgent())
+        if agent_name == "mcts":
+            agent = MCTSAgent(mcts_iterations, mcts_rollout_depth, seed)
         reward, latencies = 0.0, []
         while not env.done:
             started = time.perf_counter()
@@ -78,17 +81,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--max-ticks", type=int, default=500)
-    parser.add_argument("--agents", nargs="+", choices=("random", "rule", "beam", "nanojev"), default=("random", "rule"))
+    parser.add_argument("--agents", nargs="+", choices=("random", "rule", "beam", "mcts", "nanojev"), default=("random", "rule"))
     parser.add_argument("--policy", choices=("model", "memory", "hybrid"), default="hybrid")
     parser.add_argument("--max-batch-states", type=int, default=1)
     parser.add_argument("--campaign-level", type=int, default=0)
+    parser.add_argument("--mcts-iterations", type=int, default=128)
+    parser.add_argument("--mcts-rollout-depth", type=int, default=4)
     parser.add_argument("--csv", type=Path)
     args = parser.parse_args()
     rows = []
     for name in args.agents:
         rows += (run_nanojev(args.episodes, args.max_ticks, args.policy, args.max_batch_states,
                              args.campaign_level) if name == "nanojev" else
-                 run(name, args.episodes, args.max_ticks, args.campaign_level))
+                 run(name, args.episodes, args.max_ticks, args.campaign_level,
+                     args.mcts_iterations, args.mcts_rollout_depth))
     for name in args.agents:
         label = f"nanojev_{args.policy}" if name == "nanojev" else name
         own = [row for row in rows if row["agent"] == label]

@@ -38,6 +38,10 @@ RuleAgentV2 通过一回合 `clone()+step()` 与下一次 Intent 威胁评分选
 value、visits 与软策略分布。在第 3 关 10×100 行动固定 seed 验收中，Beam 平均奖励 83.44，
 高于 RuleV2 的 69.76，宝石数 28 对 26；完整结果见
 [`beam_rule_10x100.json`](baselines/v2/beam_rule_10x100.json)。
+MCTS Teacher 已实现 UCT selection、expansion、随机 rollout、状态评估、backprop 和 visit policy 导出。
+128 次迭代的 3×100 行动烟测平均奖励为 79.33（RuleV2 63.53），但宝石数为 8（RuleV2 10），
+说明当前 MCTS 更偏战斗，仍需用更大样本调整导航权重；结果见
+[`mcts_rule_3x100.json`](baselines/v2/mcts_rule_3x100.json)。
 固定 100 seed × 500 tick 下平均奖励为 126.95（Random 17.49），0 死亡，结果见
 [`baselines/v2/rule_100x500.json`](baselines/v2/rule_100x500.json)。
 V2 复杂度基准中 RuleV2 平均分支因子为 7.317，79.92% 状态有至少 6 个动作，抽样状态的
@@ -122,6 +126,8 @@ python scripts/generate_dataset.py --v2 --records 10000 --targets rollout --roll
   --output datasets/generated/arena_v2_rollout_10k.jsonl
 python scripts/generate_dataset.py --v2 --records 1000 --targets beam `
   --beam-depth 6 --beam-width 16 --output datasets/generated/arena_v2_beam_1k.jsonl
+python scripts/generate_dataset.py --v2 --records 1000 --targets mcts `
+  --mcts-iterations 128 --mcts-rollout-depth 4 --output datasets/generated/arena_v2_mcts_1k.jsonl
 python scripts/validate_dataset.py datasets/generated/arena_rule_1k.jsonl
 python scripts/audit_tokens.py datasets/generated/arena_rollout_memory_20k.jsonl
 ```

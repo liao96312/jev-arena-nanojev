@@ -1438,13 +1438,13 @@ Beam > RuleAgentV2
 
 TODO：
 
-- [ ] node
-- [ ] selection
-- [ ] expansion
-- [ ] rollout/eval
-- [ ] backprop
-- [ ] visit policy
-- [ ] dataset export
+- [x] node
+- [x] selection
+- [x] expansion
+- [x] rollout/eval
+- [x] backprop
+- [x] visit policy
+- [x] dataset export
 
 验收：
 
@@ -1788,7 +1788,7 @@ NanoJev 很快，但能力有限。
 - [x] Spike
 - [x] Beam Search
 - [ ] Search teacher dataset
-- [ ] MCTS
+- [x] MCTS
 - [ ] Search distillation
 
 ## P3 — 暂缓
