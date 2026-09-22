@@ -22,7 +22,7 @@ if ($LASTEXITCODE) { throw "Beam Teacher token 审计失败" }
     --init-checkpoint (Join-Path $projectRoot "checkpoints\NanoJev\variants\games_gold_seed17") `
     --objective gold_distribution --loss ce --freeze-backbone --backbone-lr 0 `
     --head-steps 0 --steps 500 --batch-questions 8 --microbatch-questions 1 `
-    --max-microbatch-tokens 4096 --eval-every 100 --max-length 192 `
+    --max-microbatch-tokens 4096 --eval-every 250 --max-length 192 `
     --head-lr 2e-4 --precision fp32
 if ($LASTEXITCODE) { throw "Beam Teacher 蒸馏训练失败" }
 & $python (Join-Path $projectRoot "scripts\calibrate_predictions.py") $checkpoint `
