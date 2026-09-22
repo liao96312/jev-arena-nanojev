@@ -1,0 +1,21 @@
+{
+  "file": "datasets\\generated\\arena_v2_beam_10k.jsonl",
+  "bytes": 16694705,
+  "sha256": "85cd5d4991777792b0833989829d0d37e5b4dcaf3eef2fa140e1bfd85aba9166",
+  "records": 10000,
+  "groups": 229,
+  "splits": {
+    "train": 7000,
+    "dev": 1000,
+    "calibration": 500,
+    "test": 1000,
+    "ood": 500
+  },
+  "token_audit": {
+    "questions": 10000,
+    "p50": 167,
+    "p95": 182,
+    "max": 200,
+    "max_length": 256
+  }
+}
