@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, ENEMY_SPEED_LEVEL, Action,
                        Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout)
-from .boss import PrismWarden, ray_cells
+from .boss import FurnaceHydra, PrismWarden, ray_cells
 
 
 @dataclass(frozen=True)
@@ -64,10 +64,10 @@ class ArenaConfig:
 def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
-    if level == 10:
-        return ArenaConfig(difficulty_level=10, max_ticks=300, walls=0, enemies=0, gems=0,
+    if level in (10, 20):
+        return ArenaConfig(difficulty_level=level, max_ticks=300, walls=0, enemies=0, gems=0,
                            fires=0, spikes=0, pits=0, barrels=0, medkits=0,
-                           enemy_hp_bonus=9, action_points=2, spawn_protection_rounds=2,
+                           enemy_hp_bonus=level - 1, action_points=2, spawn_protection_rounds=2,
                            finish_on_all_gems=True)
     return ArenaConfig(
         difficulty_level=level,
@@ -141,9 +141,10 @@ class ArenaEnv:
         raise RuntimeError("could not generate a playable map after 20 attempts")
 
     def _generate_map(self) -> None:
-        self.boss: PrismWarden | None = None
+        self.boss: PrismWarden | FurnaceHydra | None = None
         self.reflectors: set[tuple[int, int]] = set()
-        if self.config.difficulty_level == 10 and self.config.finish_on_all_gems:
+        self.coolant_valves: set[tuple[int, int]] = set()
+        if self.config.difficulty_level in (10, 20) and self.config.finish_on_all_gems:
             self.player = Player((10, 15), loadout=self.loadout)
             self.player.loadout.pistol = True
             self.player.loadout.energy = max(12, self.player.loadout.energy)
@@ -152,13 +153,20 @@ class ArenaEnv:
                                    17 if y in (1, 2, 17, 18) else 19)}
             self.walls = {cell for cell in room
                           if any(self.add(cell, direction) not in room for direction in DIRECTIONS)}
-            self.walls |= {(6, 10), (14, 10), (6, 13), (14, 13)}
             self.enemies, self.gems, self.fires, self.spikes = [], set(), set(), set()
-            self.pits, self.barrels, self.medkits = set(), set(), {(7, 14), (13, 14)}
+            self.pits, self.barrels = set(), set()
             self.bow_pickups, self.pistol_pickups = set(), {(10, 14)}
-            self.arrow_bundles, self.energy_cells = set(), {(7, 15), (13, 15)}
-            self.reflectors = {(x, 12) for x in (9, 10, 11)}
-            self.boss = PrismWarden()
+            self.arrow_bundles = set()
+            if self.config.difficulty_level == 10:
+                self.walls |= {(6, 10), (14, 10), (6, 13), (14, 13)}
+                self.medkits, self.energy_cells = {(7, 14), (13, 14)}, {(7, 15), (13, 15)}
+                self.reflectors = {(x, 12) for x in (9, 10, 11)}
+                self.boss = PrismWarden()
+            else:
+                self.walls |= {(8, 10), (12, 10), (8, 14), (12, 14)}
+                self.medkits, self.energy_cells = {(5, 15), (15, 15)}, {(6, 15), (14, 15)}
+                self.coolant_valves = {(x, 12) for x in (7, 10, 13)}
+                self.boss = FurnaceHydra()
             return
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
@@ -246,11 +254,11 @@ class ArenaEnv:
     def enemy_at(self, position: tuple[int, int]) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
-    def boss_at(self, position: tuple[int, int]) -> PrismWarden | None:
+    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | None:
         return self.boss if self.boss and self.boss.position == position else None
 
     def boss_ray(self) -> tuple[tuple[int, int], ...]:
-        if not self.boss or self.boss.target is None:
+        if not isinstance(self.boss, PrismWarden) or self.boss.target is None:
             return ()
         cells = ray_cells(self.boss.position, self.boss.target)
         mirror = next((index for index, cell in enumerate(cells) if cell in self.reflectors), None)
@@ -446,7 +454,8 @@ class ArenaEnv:
             events.append("pickup_energy")
         return reward
 
-    def _damage_entity(self, entity: Player | Enemy | PrismWarden, amount: int, events: list[str], source: str) -> float:
+    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra,
+                       amount: int, events: list[str], source: str) -> float:
         if entity is self.player and self.player.invulnerable:
             events.append(f"invulnerable:{source}")
             return 0.0
@@ -481,7 +490,8 @@ class ArenaEnv:
         events.append("kill")
         return 20.0 if source in ("attack", "bow", "pistol") else 10.0
 
-    def _ray_target(self, origin: tuple[int, int], direction: str, range_: int) -> tuple[Enemy | PrismWarden, int] | None:
+    def _ray_target(self, origin: tuple[int, int], direction: str,
+                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra, int] | None:
         target = origin
         for distance in range(1, range_ + 1):
             target = self.add(target, direction)
@@ -537,6 +547,8 @@ class ArenaEnv:
         boss = self.boss
         if boss is None or self.round < self.config.spawn_protection_rounds:
             return 0.0
+        if isinstance(boss, FurnaceHydra):
+            return self._resolve_furnace(boss, events)
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if not boss.exposed_rounds:
@@ -603,6 +615,50 @@ class ArenaEnv:
                 events.append(f"boss_move:{previous[0]}:{previous[1]}:{x}:{previous[1]}")
         else:
             boss.target = None
+        return reward
+
+    def _resolve_furnace(self, boss: FurnaceHydra, events: list[str]) -> float:
+        if boss.exposed_rounds:
+            boss.exposed_rounds -= 1
+            if not boss.exposed_rounds:
+                boss.valves_opened.clear()
+                events.append("boss_shield_restored")
+            return 0.0
+        if boss.target is None:
+            boss.attack_kind = "wave" if boss.attacks % 2 == 0 else "fireball"
+            if boss.attack_kind == "wave":
+                remaining = [x for x in (10, 7, 13) if x not in boss.valves_opened]
+                boss.head_x = remaining[0]
+                boss.target = (boss.head_x, 16)
+            else:
+                boss.target = self.player.position
+            events.append(f"furnace_aim:{boss.attack_kind}:{boss.target[0]}:{boss.target[1]}")
+            return 0.0
+        reward = 0.0
+        if boss.attack_kind == "wave":
+            events.append(f"furnace_wave:{boss.head_x}")
+            if self.player.position == (boss.head_x, 12):
+                boss.valves_opened.add(boss.head_x)
+                events.append(f"furnace_valve:{boss.head_x}")
+                reward += 15
+            elif self.player.position[0] == boss.head_x and 8 <= self.player.position[1] <= 16:
+                reward += self._damage_entity(self.player, boss.wave_damage, events, "furnace_wave")
+        else:
+            events.append(f"furnace_fireball:{boss.position[0]}:{boss.position[1]}:"
+                          f"{boss.target[0]}:{boss.target[1]}")
+            if self._distance(self.player.position, boss.target) <= 1:
+                reward += self._damage_entity(self.player, boss.fireball_damage, events, "furnace_fireball")
+        boss.attacks += 1
+        boss.target = None
+        if len(boss.valves_opened) == 3:
+            boss.exposed_rounds = 3
+            boss.position = (10, 7)
+            events.append("boss_shield_break")
+        else:
+            previous = boss.position
+            boss.position = ((9, 10, 11)[boss.attacks % 3], 7)
+            if previous != boss.position:
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:7")
         return reward
 
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
@@ -853,10 +909,16 @@ class ArenaEnv:
     def imminent_threats(self, position: tuple[int, int] | None = None) -> tuple[tuple[str, int], ...]:
         position = position or self.player.position
         threats: list[tuple[str, int]] = []
-        if self.boss and self.boss.target and position in self.boss_ray():
+        if isinstance(self.boss, PrismWarden) and self.boss.target and position in self.boss_ray():
             threats.append(("prism_warden/beam", self.boss.beam_damage))
-        if self.boss and self.boss.lunge_target and self._distance(position, self.boss.lunge_target) <= 1:
+        if isinstance(self.boss, PrismWarden) and self.boss.lunge_target and self._distance(position, self.boss.lunge_target) <= 1:
             threats.append(("prism_warden/lunge", self.boss.lunge_damage))
+        if isinstance(self.boss, FurnaceHydra) and self.boss.target:
+            if self.boss.attack_kind == "wave" and position[0] == self.boss.head_x and 8 <= position[1] <= 16:
+                if position != (self.boss.head_x, 12):
+                    threats.append(("furnace_hydra/wave", self.boss.wave_damage))
+            elif self.boss.attack_kind == "fireball" and self._distance(position, self.boss.target) <= 1:
+                threats.append(("furnace_hydra/fireball", self.boss.fireball_damage))
         for enemy in self.enemies:
             intent = enemy.intent
             if not intent or intent.countdown > 1:
@@ -909,10 +971,14 @@ class ArenaEnv:
             "cooldowns": tuple(sorted(self.player.cooldowns.items())),
             "walls": tuple(sorted(self.walls)),
             "enemies": tuple((enemy.position, enemy.hp) for enemy in self.enemies),
-            "boss": (self.boss.position, self.boss.hp, self.boss.reflections,
-                     self.boss.exposed_rounds, self.boss.target, self.boss.lunge_target,
-                     self.boss.returning) if self.boss else None,
+            "boss": (("prism", self.boss.position, self.boss.hp, self.boss.reflections,
+                      self.boss.exposed_rounds, self.boss.target, self.boss.lunge_target,
+                      self.boss.returning) if isinstance(self.boss, PrismWarden) else
+                     ("furnace", self.boss.position, self.boss.hp, tuple(sorted(self.boss.valves_opened)),
+                      self.boss.exposed_rounds, self.boss.attack_kind, self.boss.target,
+                      self.boss.attacks) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
+            "coolant_valves": tuple(sorted(self.coolant_valves)),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,
                                     enemy.intent.kind.value if enemy.intent else None,
                                     enemy.intent.direction if enemy.intent else None,

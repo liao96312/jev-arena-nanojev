@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .env import ArenaEnv
+from .boss import FurnaceHydra
 
 
 ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
@@ -71,7 +72,13 @@ def encode_state(env: ArenaEnv) -> str:
         hazards += f" p{_nearest(env.player.position, list(env.pits))}"
     barrel = f" barrel={_nearest(env.player.position, list(env.barrels))}" if env.barrels else ""
     boss = ""
-    if env.boss:
+    if isinstance(env.boss, FurnaceHydra):
+        boss = (f" Boss furnace@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
+                f"valves={sorted(env.boss.valves_opened)}/3 exposed={env.boss.exposed_rounds} "
+                f"attack={env.boss.attack_kind} aim={env.boss.target or 'none'} "
+                f"dmg=wave{env.boss.wave_damage}/fireball{env.boss.fireball_damage} "
+                f"coolant={sorted(env.coolant_valves)}.")
+    elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
                 f"reflect={env.boss.reflections}/3 exposed={env.boss.exposed_rounds} "

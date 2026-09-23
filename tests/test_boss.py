@@ -77,6 +77,50 @@ class PrismBossTests(unittest.TestCase):
         self.assertIn("damage:boss_lunge:24", hit.events)
         self.assertEqual(exposed.player.hp, 76)
 
+    def test_furnace_room_and_two_distinct_attacks(self):
+        env = ArenaEnv(campaign_config(20))
+        self.assertEqual(env.coolant_valves, {(7, 12), (10, 12), (13, 12)})
+        self.assertTrue((env.coolant_valves | env.medkits | env.energy_cells) <= env._reachable_cells())
+        self.assertIn("Boss furnace", encode_state(env))
+        self.assertIn("furnace_hydra", build_candidates(env)[Action.SHOOT_PISTOL_N.value])
+
+        env.round = 3
+        env.boss.attack_kind = "wave"
+        env.boss.head_x = 10
+        env.boss.target = (10, 16)
+        self.assertIn(("furnace_hydra/wave", 22), env.imminent_threats())
+        env.step(Action.WAIT)
+        wave = env.step(Action.WAIT)
+        self.assertIn("damage:furnace_wave:22", wave.events)
+
+        env.player.position = (10, 12)
+        env.boss.attack_kind = "wave"
+        env.boss.head_x = 10
+        env.boss.target = (10, 16)
+        env.step(Action.WAIT)
+        valve = env.step(Action.WAIT)
+        self.assertIn("furnace_valve:10", valve.events)
+        self.assertNotIn("damage:furnace_wave:22", valve.events)
+
+        env.boss.attack_kind = "fireball"
+        env.boss.target = env.player.position
+        self.assertIn(("furnace_hydra/fireball", 16), env.imminent_threats())
+        env.step(Action.WAIT)
+        fireball = env.step(Action.WAIT)
+        self.assertIn("damage:furnace_fireball:16", fireball.events)
+
+    def test_rule_agent_can_finish_furnace_without_damage(self):
+        env, agent = ArenaEnv(campaign_config(20)), RuleAgent()
+        events = []
+        for _ in range(100):
+            if env.done:
+                break
+            events.extend(env.step(agent.act(env)).events)
+        self.assertTrue(env.done)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(events.count("boss_shield_break"), 2)
+        self.assertIn("boss_defeated", events)
+
 
 if __name__ == "__main__":
     unittest.main()

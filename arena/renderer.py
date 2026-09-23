@@ -5,6 +5,7 @@ from pathlib import Path
 
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
+from arena.boss import FurnaceHydra
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
@@ -77,6 +78,14 @@ class ArenaRenderer:
                              (center[0], center[1] + 15), (center[0] - 12, center[1])], 3)
             pg.draw.line(self.screen, (235, 250, 255),
                          (center[0] - 7, center[1] + 6), (center[0] + 7, center[1] - 6), 2)
+        for position in env.coolant_valves:
+            opened = isinstance(env.boss, FurnaceHydra) and position[0] in env.boss.valves_opened
+            center = (position[0] * self.CELL + self.CELL // 2,
+                      position[1] * self.CELL + self.CELL // 2)
+            pg.draw.circle(self.screen, (68, 183, 215) if opened else (87, 232, 255), center, 14, 3)
+            pg.draw.circle(self.screen, (180, 245, 255), center, 7, 2)
+            pg.draw.line(self.screen, (165, 241, 255), (center[0] - 8, center[1]),
+                         (center[0] + 8, center[1]), 2)
         for position in env.pits:
             self._sprite(position, "pit")
         for position in env.spikes:
@@ -112,9 +121,10 @@ class ArenaRenderer:
             if move:
                 boss_position = (int(move[1]) + (int(move[3]) - int(move[1])) * eased,
                                  int(move[2]) + (int(move[4]) - int(move[2])) * eased)
-            self._sprite(boss_position, "boss_prism_warden")
+            furnace = isinstance(env.boss, FurnaceHydra)
+            self._sprite(boss_position, "boss_furnace_hydra" if furnace else "boss_prism_warden")
             if "boss_shield_break" in events:
-                self._sprite(boss_position, "effect_boss_prism_burst")
+                self._sprite(boss_position, "effect_boss_magma_wave" if furnace else "effect_boss_prism_burst")
             if any(event.startswith("boss_hit:") for event in events):
                 center = (round((boss_position[0] + .5) * self.CELL),
                           round((boss_position[1] + .5) * self.CELL))
@@ -168,6 +178,18 @@ class ArenaRenderer:
                 self._projectile_effect(shot_start, shot_end, shot_progress,
                                         "projectile_boss_prism", (215, 95, 255))
                 continue
+            if event.startswith("furnace_fireball:"):
+                parts = event.split(":")
+                self._projectile_effect((int(parts[1]), int(parts[2])),
+                                        (int(parts[3]), int(parts[4])), progress,
+                                        "projectile_boss_fireball", (255, 110, 40))
+                continue
+            if event.startswith("furnace_wave:"):
+                x = int(event.split(":")[1])
+                for y in range(8, 17):
+                    if progress >= (y - 8) / 13:
+                        self._sprite((x, y), "effect_boss_magma_wave")
+                continue
             if not event.startswith("archer_shot:"):
                 continue
             parts = event.split(":")
@@ -185,10 +207,16 @@ class ArenaRenderer:
         left = self.map_width + 20
         self._text(f"第 {level} 关 · Jev Arena", left, 20, colors["text"])
         if env.boss:
-            state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
-                     f"镜面反射 {env.boss.reflections}/3")
-            self._text(f"棱镜守卫  HP {env.boss.hp}/{env.boss.max_hp}  {state}",
-                       left, 265, (244, 164, 255), small=True)
+            if isinstance(env.boss, FurnaceHydra):
+                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                         f"冷却阀 {len(env.boss.valves_opened)}/3")
+                label, tint = "熔炉三头机", (255, 171, 104)
+            else:
+                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                         f"镜面反射 {env.boss.reflections}/3")
+                label, tint = "棱镜守卫", (244, 164, 255)
+            self._text(f"{label}  HP {env.boss.hp}/{env.boss.max_hp}  {state}",
+                       left, 265, tint, small=True)
         self._text(f"智能体：{AGENT_NAMES.get(agent, agent)}", left, 55, colors["muted"])
         self._text(f"动作：{ACTION_NAMES.get(action, action)}", left, 80, colors["text"])
         self._text(f"推理耗时：{latency_ms:.1f} 毫秒", left, 105, colors["muted"])
@@ -255,7 +283,8 @@ class ArenaRenderer:
                      "ammo_arrows", "ammo_energy_cell", "barrel", "spike", "pit",
                      "projectile_enemy_laser", "projectile_player_pulse", "projectile_player_arrow",
                      "effect_player_slash", "effect_enemy_claw", "boss_prism_warden",
-                     "projectile_boss_prism", "effect_boss_prism_burst"):
+                     "projectile_boss_prism", "effect_boss_prism_burst", "boss_furnace_hydra",
+                     "projectile_boss_fireball", "effect_boss_magma_wave"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -268,6 +297,9 @@ class ArenaRenderer:
             elif name in ("projectile_boss_prism", "effect_boss_prism_burst", "boss_prism_warden"):
                 limit = round(self.CELL * (1.5 if name == "projectile_boss_prism" else
                                            2.9 if name == "boss_prism_warden" else 2.5))
+            elif name in ("boss_furnace_hydra", "projectile_boss_fireball", "effect_boss_magma_wave"):
+                limit = round(self.CELL * (3.2 if name == "boss_furnace_hydra" else
+                                           1.7 if name == "projectile_boss_fireball" else 2.1))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -441,6 +473,25 @@ class ArenaRenderer:
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
     def _boss_telegraph(self, env: ArenaEnv) -> None:
+        if isinstance(env.boss, FurnaceHydra):
+            boss = env.boss
+            if boss.target is None:
+                return
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            if boss.attack_kind == "wave":
+                cells = [(boss.head_x, y) for y in range(8, 17)]
+            else:
+                x, y = boss.target
+                cells = [(x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+            for x, y in cells:
+                if not env.in_bounds((x, y)):
+                    continue
+                safe = boss.attack_kind == "wave" and (x, y) == (boss.head_x, 12)
+                self.pg.draw.rect(overlay, (70, 215, 250, 115) if safe else (255, 98, 34, 110),
+                                  (x * self.CELL + 2, y * self.CELL + 2,
+                                   self.CELL - 4, self.CELL - 4), border_radius=5)
+            self.screen.blit(overlay, (0, 0))
+            return
         if env.boss and env.boss.lunge_target:
             target = env.boss.lunge_target
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
@@ -537,7 +588,12 @@ class ArenaRenderer:
             elif event == "boss_shield_break": labels.append("护盾破裂！攻击核心！")
             elif event == "boss_shield": labels.append("护盾阻挡攻击")
             elif event.startswith("boss_hit:"): labels.append(f"核心受到 {event.split(':')[1]} 点伤害")
-            elif event == "boss_defeated": labels.append("棱镜守卫已击败！")
+            elif event == "boss_defeated": labels.append("Boss 已击败！")
+            elif event.startswith("furnace_aim:wave:"): labels.append("熔岩波预警：蓝色冷却阀可挡火！")
+            elif event.startswith("furnace_aim:fireball:"): labels.append("火球锁定：离开橙色落点！")
+            elif event.startswith("furnace_wave:"): labels.append("熔岩波来袭！")
+            elif event.startswith("furnace_fireball:"): labels.append("熔炉火球发射！")
+            elif event.startswith("furnace_valve:"): labels.append("冷却阀反制成功！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")

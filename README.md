@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-104%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-106%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -39,6 +39,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 | 安全生成 | 宝石、血包和关键道具保证存在无伤可达路线，出生点不会立刻遭到激光锁定 |
 | 中文界面 | 实时显示模型概率、选择依据、推理耗时、关卡难度、武器弹药和技能状态 |
 | 首个 Boss | 第 10 关棱镜守卫：扩大异形房间、掩体与房内补给；引导棱镜弹击中镜柱 3 次破盾，躲开有预告的突进，再攻击核心 |
+| 第二只 Boss | 第 20 关熔炉三头机：火球锁定伤害 16、熔岩波伤害 22；站上对应冷却阀化解火线，3 阀完成后攻击核心 |
 
 第 10 关 Boss 实机画面（紫色实线与亮格为实际攻击路径，镜柱可反射弹体）：
 
@@ -48,7 +49,11 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 
 棱镜射线伤害 14，突进伤害 24；炸药桶爆炸为菱形 2 格范围、基础伤害 25，伤害范围和爆炸演出按同一半径绘制。
 
-第 20～100 关 Boss 目前仍是[设计规划](JEV_ARENA_BOSS_ROADMAP.md)，选关不等于这些 Boss 已实装。
+第 20 关熔炉三头机的熔岩波预警；青色冷却阀、血包、武器和弹药都在 Boss 房内：
+
+![第 20 关熔炉三头机](assets/screenshots/boss_furnace_hydra.png)
+
+第 30～100 关 Boss 目前仍是[设计规划](JEV_ARENA_BOSS_ROADMAP.md)，选关不等于这些 Boss 已实装。
 
 ### 难度不是简单堆怪
 

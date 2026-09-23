@@ -1,5 +1,6 @@
 from arena.entities import Action
 from arena.env import ArenaEnv
+from arena.boss import FurnaceHydra
 
 
 class RuleAgent:
@@ -27,11 +28,21 @@ class RuleAgent:
         if targets:
             value -= .05 * min(simulation._distance(simulation.player.position, target) for target in targets)
         if simulation.boss and not simulation.boss.exposed_rounds:
-            # Keep the Boss's locked ray passing through a mirror until it fires.
-            lure = (10, 15)
-            value -= .8 * simulation._distance(simulation.player.position, lure)
+            if isinstance(simulation.boss, FurnaceHydra):
+                remaining = [x for x in (10, 7, 13) if x not in simulation.boss.valves_opened]
+                head = (simulation.boss.head_x if simulation.boss.attack_kind == "wave" and
+                        simulation.boss.target else remaining[0])
+                value -= 1.2 * simulation._distance(simulation.player.position, (head, 12))
+            else:
+                # Keep the Boss's locked ray passing through a mirror until it fires.
+                value -= .8 * simulation._distance(simulation.player.position, (10, 15))
         if env.boss and env.boss.exposed_rounds and action.value.startswith("shoot_"):
             value += 20
+        if isinstance(simulation.boss, FurnaceHydra) and simulation.boss.exposed_rounds:
+            value -= 2 * abs(simulation.player.position[0] - 10)
+        if (isinstance(env.boss, FurnaceHydra) and env.boss.target and
+                env.boss.attack_kind == "fireball"):
+            value += 5 * min(2, env._distance(simulation.player.position, env.boss.target))
         if simulation.player.position == env.previous_player_position:
             value -= .5
         return value
