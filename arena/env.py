@@ -295,8 +295,6 @@ class ArenaEnv:
         if action.value.startswith("move_"):
             self.player.position = self.add(self.player.position, action.value[-1])
             reward += self._collect(events)
-            if self.player.position in self.fires:
-                reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire") - 3
             if self.player.position in self.spikes:
                 reward += self._damage_entity(self.player, self.config.spike_damage, events, "spike") - 3
         elif action.value.startswith("dash_"):
@@ -309,7 +307,7 @@ class ArenaEnv:
             events.append(f"dash:{direction}")
             reward += self._collect(events)
             for position in traversed:
-                if position in self.fires:
+                if position != self.player.position and position in self.fires:
                     reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire")
                 if position in self.spikes:
                     reward += self._damage_entity(self.player, self.config.spike_damage, events, "spike")
@@ -341,6 +339,11 @@ class ArenaEnv:
                 enemy.stunned += 1
             self.player.cooldowns["emp"] = self.config.emp_cooldown
             events.append(f"emp:{len(affected)}")
+
+        if self.player.hp > 0 and self.player.position in self.fires:
+            reward += self._damage_entity(self.player, self.config.fire_damage, events, "fire")
+            if action.value.startswith("move_"):
+                reward -= 3
 
         self.ap_remaining -= self._action_cost(action)
         if self.player.hp > 0 and self.ap_remaining == 0:

@@ -239,6 +239,25 @@ class ArenaTests(unittest.TestCase):
         self.assertNotIn(enemy, env.enemies)
         self.assertIn("environment_kill", result.events)
 
+    def test_fire_burns_each_action_while_standing_on_it(self):
+        config = ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                             medkits=0, fire_damage=10)
+        env = ArenaEnv(config)
+        env.player.position, env.fires = (1, 2), {(2, 2)}
+        self.assertIn("damage:fire:10", env.step(Action.MOVE_E).events)
+        self.assertEqual(env.player.hp, 90)
+        self.assertIn("damage:fire:10", env.step(Action.WAIT).events)
+        self.assertEqual(env.player.hp, 80)
+        env.step(Action.MOVE_N)
+        self.assertEqual(env.player.hp, 80)
+
+        env = ArenaEnv(config)
+        env.player.position, env.fires = (0, 2), {(2, 2)}
+        self.assertIn("invulnerable:fire", env.step(Action.DASH_E).events)
+        self.assertEqual(env.player.hp, 100)
+        self.assertIn("damage:fire:10", env.step(Action.WAIT).events)
+        self.assertEqual(env.player.hp, 90)
+
     def test_pit_blocks_movement_but_shove_is_instant_kill(self):
         env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
                                    pits=0, medkits=0))
