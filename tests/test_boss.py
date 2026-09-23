@@ -80,9 +80,17 @@ class PrismBossTests(unittest.TestCase):
     def test_furnace_room_and_two_distinct_attacks(self):
         env = ArenaEnv(campaign_config(20))
         self.assertEqual(env.coolant_valves, {(7, 12), (10, 12), (13, 12)})
-        self.assertTrue((env.coolant_valves | env.medkits | env.energy_cells) <= env._reachable_cells())
+        self.assertEqual(env.player.position, (10, 16))
+        self.assertTrue(env.player.loadout.bow)
+        self.assertFalse(env.player.loadout.pistol)
+        self.assertEqual(env.bow_pickups, {(10, 15)})
+        self.assertEqual(env.arrow_bundles, {(6, 16), (14, 16)})
+        self.assertGreater(len(env.forge_floor), 220)
+        self.assertTrue((env.coolant_valves | env.medkits | env.arrow_bundles) <= env._reachable_cells())
         self.assertIn("Boss furnace", encode_state(env))
-        self.assertIn("furnace_hydra", build_candidates(env)[Action.SHOOT_PISTOL_N.value])
+        env.player.position = (10, 12)
+        self.assertIn("furnace_hydra", build_candidates(env)[Action.SHOOT_BOW_N.value])
+        env.player.position = (10, 16)
 
         env.round = 3
         env.boss.attack_kind = "wave"

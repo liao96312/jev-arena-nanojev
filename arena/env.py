@@ -144,27 +144,43 @@ class ArenaEnv:
         self.boss: PrismWarden | FurnaceHydra | None = None
         self.reflectors: set[tuple[int, int]] = set()
         self.coolant_valves: set[tuple[int, int]] = set()
+        self.forge_floor: set[tuple[int, int]] = set()
         if self.config.difficulty_level in (10, 20) and self.config.finish_on_all_gems:
-            self.player = Player((10, 15), loadout=self.loadout)
-            self.player.loadout.pistol = True
-            self.player.loadout.energy = max(12, self.player.loadout.energy)
-            room = {(x, y) for y in range(1, 19)
-                    for x in range(3 if y in (1, 2, 17, 18) else 1,
-                                   17 if y in (1, 2, 17, 18) else 19)}
+            furnace = self.config.difficulty_level == 20
+            self.player = Player((10, 16 if furnace else 15), loadout=self.loadout)
+            if furnace:
+                self.player.loadout.bow = True
+                self.player.loadout.arrows = max(10, self.player.loadout.arrows)
+                room = {(x, y) for y in range(20)
+                        for x in range(4 if y in (0, 1, 18, 19) else
+                                       2 if y in (2, 3, 16, 17) else 0,
+                                       16 if y in (0, 1, 18, 19) else
+                                       18 if y in (2, 3, 16, 17) else 20)}
+            else:
+                self.player.loadout.pistol = True
+                self.player.loadout.energy = max(12, self.player.loadout.energy)
+                room = {(x, y) for y in range(1, 19)
+                        for x in range(3 if y in (1, 2, 17, 18) else 1,
+                                       17 if y in (1, 2, 17, 18) else 19)}
             self.walls = {cell for cell in room
                           if any(self.add(cell, direction) not in room for direction in DIRECTIONS)}
             self.enemies, self.gems, self.fires, self.spikes = [], set(), set(), set()
             self.pits, self.barrels = set(), set()
-            self.bow_pickups, self.pistol_pickups = set(), {(10, 14)}
-            self.arrow_bundles = set()
             if self.config.difficulty_level == 10:
                 self.walls |= {(6, 10), (14, 10), (6, 13), (14, 13)}
                 self.medkits, self.energy_cells = {(7, 14), (13, 14)}, {(7, 15), (13, 15)}
+                self.bow_pickups, self.pistol_pickups = set(), {(10, 14)}
+                self.arrow_bundles = set()
                 self.reflectors = {(x, 12) for x in (9, 10, 11)}
                 self.boss = PrismWarden()
             else:
-                self.walls |= {(8, 10), (12, 10), (8, 14), (12, 14)}
-                self.medkits, self.energy_cells = {(5, 15), (15, 15)}, {(6, 15), (14, 15)}
+                self.walls |= {(5, 8), (14, 8), (5, 9), (14, 9),
+                               (8, 10), (12, 10), (6, 14), (14, 14)}
+                self.forge_floor = room - self.walls
+                self.fires = {(4, 11), (15, 11), (4, 13), (15, 13)}
+                self.medkits, self.energy_cells = {(5, 16), (15, 16)}, set()
+                self.bow_pickups, self.pistol_pickups = {(10, 15)}, set()
+                self.arrow_bundles = {(6, 16), (14, 16)}
                 self.coolant_valves = {(x, 12) for x in (7, 10, 13)}
                 self.boss = FurnaceHydra()
             return

@@ -67,7 +67,11 @@ class ArenaRenderer:
         for y in range(env.config.height):
             for x in range(env.config.width):
                 rect = pg.Rect(x * self.CELL, y * self.CELL, self.CELL, self.CELL)
-                pg.draw.rect(self.screen, colors["grid"], rect, 1)
+                if (x, y) in env.forge_floor:
+                    pg.draw.rect(self.screen, (35, 24, 25) if (x + y) % 2 else (40, 27, 27), rect)
+                    pg.draw.rect(self.screen, (69, 44, 42), rect, 1)
+                else:
+                    pg.draw.rect(self.screen, colors["grid"], rect, 1)
         for position in env.walls:
             self._sprite(position, "wall")
         for position in env.reflectors:
