@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-from arena.boss import PrismWarden
+from arena.boss import FurnaceHydra, PrismWarden
 
 
 def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
@@ -109,19 +109,26 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
-    if mode == "hybrid" and isinstance(env.boss, PrismWarden):
+    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra)):
         boss = env.boss
         if boss.exposed_rounds:
             shots = {action for action in safest if action.startswith("shoot_")}
             if shots:
                 return max(sorted(shots), key=probabilities.__getitem__), "boss_tactics"
-            targets = {(boss.position[0], y) for y in range(9, 17)} - env.walls
-        else:
+            targets = {(boss.position[0], y) for y in range(8, 17)} - env.walls
+        elif isinstance(boss, PrismWarden):
             targets = env.prism_baits()
             if boss.target and env.boss_ray() and env.boss_ray()[-1] in env.reflectors:
                 if "wait" in safest:
                     return "wait", "boss_tactics"
             if boss.target is None and env.player.position in targets and "wait" in safest:
+                return "wait", "boss_tactics"
+        else:
+            remaining = [x for x in (10, 7, 13) if x not in boss.valves_opened]
+            head = (boss.head_x if boss.target and boss.attack_kind == "wave" else remaining[0])
+            targets = {(head, 12)}
+            if (env.player.position in targets and "wait" in safest and
+                    not (boss.target and boss.attack_kind == "fireball")):
                 return "wait", "boss_tactics"
         routes = _gem_route_actions(env, probabilities, targets) & safest
         if routes:

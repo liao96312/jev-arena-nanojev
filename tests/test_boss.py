@@ -156,6 +156,20 @@ class PrismBossTests(unittest.TestCase):
         self.assertEqual(events.count("boss_shield_break"), 2)
         self.assertIn("boss_defeated", events)
 
+    def test_default_hybrid_policy_pursues_furnace_kill_with_flat_model_scores(self):
+        env = ArenaEnv(campaign_config(20))
+        events = []
+        for _ in range(100):
+            if env.done:
+                break
+            scores = {action.value: 1.0 for action in env.legal_actions()}
+            choice, _ = select_action(scores, env, "hybrid")
+            events.extend(env.step(choice).events)
+        self.assertTrue(env.done)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(events.count("boss_shield_break"), 2)
+        self.assertIn("boss_defeated", events)
+
 
 if __name__ == "__main__":
     unittest.main()
