@@ -16,6 +16,12 @@ class CampaignSaveTests(unittest.TestCase):
             path.write_text("broken", encoding="utf-8")
             self.assertEqual(load_campaign(path), CampaignSave())
 
+    def test_saved_level_is_capped_at_one_hundred(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "campaign.json"
+            save_campaign(path, CampaignSave(999))
+            self.assertEqual(load_campaign(path).level, 100)
+
 
 if __name__ == "__main__":
     unittest.main()

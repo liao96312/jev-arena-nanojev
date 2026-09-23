@@ -48,13 +48,16 @@ class ArenaRenderer:
         self.player_facing = "s"
         self.restart_button = pygame.Rect(self.map_width + self.PANEL - 112,
                                           self.map_height + 34, 100, 30)
+        self.level_button = pygame.Rect(self.map_width + self.PANEL - 222,
+                                        self.map_height + 34, 100, 30)
         self.sprites = self._load_sprites()
 
     def draw(self, env: ArenaEnv, agent: str, probabilities: dict[str, float],
              latency_ms: float, paused: bool, action: str = "-", selection_reason: str = "",
              animation: tuple[tuple[int, int], dict[int, tuple[int, int]], str,
                               tuple[str, ...], float] | None = None, decision_ms: int = 280,
-             level: int = 1, score_offset: int = 0, error_message: str = "") -> None:
+             level: int = 1, score_offset: int = 0, error_message: str = "",
+             level_selection: str | None = None) -> None:
         pg, colors = self.pg, self.COLORS
         old_player, old_enemies, animated_action, events, progress = (
             animation if animation else (env.player.position, {}, "", (), 1.0))
@@ -178,12 +181,31 @@ class ArenaRenderer:
                   f"击败 {env.kills}   轮次 {env.round}   AP {env.ap_remaining}/{env.config.action_points}   "
                   f"行动 {env.tick}/{env.config.max_ticks}")
         self._text(status, 12, footer_y, colors["text"])
-        controls = "[1] 随机  [2] 规则  [3] NanoJev  [4] Jev API  [←/→] 调速  [空格] 暂停  [Esc] 退出"
+        controls = "[1] 随机  [2] 规则  [3] NanoJev  [4] Jev API  [L] 选关  [←/→] 调速  [空格] 暂停"
         self._text(controls + ("  已暂停/结束" if paused else ""), 12, footer_y + 28,
                    colors["muted"], small=True)
         pg.draw.rect(self.screen, (45, 105, 165), self.restart_button, border_radius=6)
         label = self.small.render("R / F5 重开", True, colors["text"])
         self.screen.blit(label, label.get_rect(center=self.restart_button.center))
+        pg.draw.rect(self.screen, (87, 70, 160), self.level_button, border_radius=6)
+        label = self.small.render("L 选择关卡", True, colors["text"])
+        self.screen.blit(label, label.get_rect(center=self.level_button.center))
+        if level_selection is not None:
+            overlay = pg.Surface(self.screen.get_size(), pg.SRCALPHA)
+            overlay.fill((4, 8, 16, 210))
+            self.screen.blit(overlay, (0, 0))
+            box = pg.Rect(0, 0, 430, 230)
+            box.center = self.screen.get_rect().center
+            pg.draw.rect(self.screen, (24, 33, 52), box, border_radius=14)
+            pg.draw.rect(self.screen, (105, 88, 220), box, 2, border_radius=14)
+            title = self.font.render("选择关卡", True, colors["text"])
+            self.screen.blit(title, title.get_rect(center=(box.centerx, box.top + 42)))
+            self._text("输入 1 到 100（整十关为 Boss）", box.left + 60, box.top + 78,
+                       colors["muted"], small=True)
+            value = self.font.render(level_selection or "_", True, (128, 222, 255))
+            self.screen.blit(value, value.get_rect(center=(box.centerx, box.top + 135)))
+            hint = self.small.render("回车确认 · Backspace 删除 · Esc 取消", True, colors["muted"])
+            self.screen.blit(hint, hint.get_rect(center=(box.centerx, box.bottom - 38)))
         pg.display.flip()
 
     def _load_sprites(self) -> dict[str, object]:

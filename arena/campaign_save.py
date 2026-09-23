@@ -19,7 +19,7 @@ def load_campaign(path: Path) -> CampaignSave:
             return CampaignSave()
         loadout = data["loadout"]
         return CampaignSave(
-            max(1, int(data["level"])), max(0, int(data["score"])),
+            max(1, min(100, int(data["level"]))), max(0, int(data["score"])),
             PlayerLoadout(bool(loadout["bow"]), bool(loadout["pistol"]),
                           max(0, min(12, int(loadout["arrows"]))),
                           max(0, min(24, int(loadout["energy"])))),

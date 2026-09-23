@@ -11,6 +11,8 @@ from arena import ArenaEnv, campaign_config
 from arena.campaign_save import CampaignSave, load_campaign, save_campaign
 from arena.renderer import ArenaRenderer
 
+MAX_LEVEL = 100
+
 
 def make_agent(name: str, seed: int):
     if name == "jev":
@@ -42,6 +44,8 @@ def keyboard_command(pg, event) -> str:
         return "quit"
     if key == pg.K_SPACE:
         return "pause"
+    if key == pg.K_l or typed == "l":
+        return "level_select"
     if key in (pg.K_r, pg.K_F5) or typed == "r" or getattr(event, "scancode", -1) == pg.KSCAN_R:
         return "restart"
     if key in (pg.K_LEFTBRACKET, pg.K_MINUS, pg.K_KP_MINUS, pg.K_LEFT):
@@ -53,6 +57,11 @@ def keyboard_command(pg, event) -> str:
         if key in keys or typed == str(number):
             return f"agent_{number}"
     return ""
+
+
+def parse_level_selection(value: str) -> int | None:
+    level = int(value) if value.isdigit() else 0
+    return level if 1 <= level <= MAX_LEVEL else None
 
 
 def restart_level(env, seed: int, pending):
@@ -77,6 +86,8 @@ def main() -> None:
     agent_name, agent = args.agent, make_agent(args.agent, args.seed)
     decision_ms = max(80, args.decision_ms)
     paused, running, last_step = False, True, 0
+    level_input: str | None = None
+    level_pause_state = False
     generation, pending, pending_generation = 0, None, 0
     animation, animation_ms, level_advance_at = None, 220, 0
     probabilities: dict[str, float] = {}
@@ -91,9 +102,34 @@ def main() -> None:
                 if event.type == renderer.pg.QUIT:
                     running = False
                     continue
+                if event.type == renderer.pg.KEYDOWN and level_input is not None:
+                    if event.key == renderer.pg.K_ESCAPE:
+                        level_input, paused = None, level_pause_state
+                    elif event.key in (renderer.pg.K_RETURN, renderer.pg.K_KP_ENTER):
+                        selected_level = parse_level_selection(level_input)
+                        if selected_level is None:
+                            error_message = "请输入 1 到 100 之间的关卡"
+                        else:
+                            level = selected_level
+                            env = ArenaEnv(campaign_config(level), env.player.loadout)
+                            env.reset(args.seed + level - 1)
+                            save_campaign(save_path, CampaignSave(level, campaign_score, env.player.loadout))
+                            agent = make_agent(agent_name, args.seed + level - 1)
+                            generation += 1
+                            level_input, pending, animation, level_advance_at = None, None, None, 0
+                            probabilities, action_name, reason, error_message = {}, "-", "", ""
+                            paused, last_step = False, now
+                    elif event.key == renderer.pg.K_BACKSPACE:
+                        level_input = level_input[:-1]
+                    elif event.unicode.isdigit() and len(level_input) < 3:
+                        level_input += event.unicode
+                    continue
                 command = (keyboard_command(renderer.pg, event) if event.type == renderer.pg.KEYDOWN else
                            "restart" if event.type == renderer.pg.MOUSEBUTTONDOWN and event.button == 1
                            and renderer.restart_button.collidepoint(event.pos) else "")
+                if (not command and event.type == renderer.pg.MOUSEBUTTONDOWN and event.button == 1
+                        and renderer.level_button.collidepoint(event.pos)):
+                    command = "level_select"
                 if command:
                     if command == "quit":
                         running = False
@@ -103,6 +139,12 @@ def main() -> None:
                         decision_ms = min(1000, decision_ms + 50)
                     elif command == "faster":
                         decision_ms = max(80, decision_ms - 50)
+                    elif command == "level_select":
+                        if pending:
+                            pending.cancel()
+                        pending, animation = None, None
+                        generation += 1
+                        level_pause_state, paused, level_input = paused, True, ""
                     elif command == "restart":
                         pending = restart_level(env, args.seed + level - 1, pending)
                         agent = make_agent(agent_name, args.seed + level - 1)
@@ -120,6 +162,10 @@ def main() -> None:
                         paused = False
             if level_advance_at and now >= level_advance_at:
                 campaign_score += env.score
+                if level >= MAX_LEVEL:
+                    save_campaign(save_path, CampaignSave(level, campaign_score, env.player.loadout))
+                    level_advance_at = 0
+                    continue
                 level += 1
                 env = ArenaEnv(campaign_config(level), env.player.loadout)
                 env.reset(args.seed + level - 1)
@@ -160,7 +206,8 @@ def main() -> None:
             if animation:
                 animation_frame = (*animation[:4], min(1, (now - animation[4]) / animation_ms))
             renderer.draw(env, agent_name, probabilities, latency, paused or env.done, action_name,
-                          reason, animation_frame, decision_ms, level, campaign_score, error_message)
+                          reason, animation_frame, decision_ms, level, campaign_score, error_message,
+                          level_input)
             clock.tick(60)
     finally:
         executor.shutdown(wait=False, cancel_futures=True)

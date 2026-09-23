@@ -96,6 +96,7 @@ git clone --branch jev-arena-1660s https://github.com/liao96312/NanoJev.git thir
 | `←` / `→` | 调整决策速度 |
 | `Space` | 暂停或继续 |
 | `R` / `F5` | 重开当前关；也可点击右下角按钮 |
+| `L` | 打开中文选关窗口，输入 1～100；也可点击“选择关卡”按钮 |
 | `Esc` | 退出 |
 
 游戏由代理自动决策，玩家负责观察、切换代理和控制演示节奏。
@@ -149,7 +150,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **96 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **99 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>
@@ -224,6 +225,7 @@ tests/            回归测试
 ## 路线图
 
 - V2 战术升级规划：[`JEV_ARENA_V2_ROADMAP.md`](JEV_ARENA_V2_ROADMAP.md)
+- 10～100 关 Boss 设定与素材：[`JEV_ARENA_BOSS_ROADMAP.md`](JEV_ARENA_BOSS_ROADMAP.md)
 - 远程武器规划：[`JEV_ARENA_RANGED_WEAPONS_PLAN.md`](JEV_ARENA_RANGED_WEAPONS_PLAN.md)
 - GTX 1660S / NanoJev 技术方案：[`jev_arena_nanojev_gtx1660s_plan.md`](jev_arena_nanojev_gtx1660s_plan.md)
 
