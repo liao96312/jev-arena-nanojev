@@ -2,6 +2,8 @@
 
 <div align="center">
 
+**简体中文** | [English](README.en.md)
+
 **由 NanoJev 驱动的本地战术竞技场**
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
