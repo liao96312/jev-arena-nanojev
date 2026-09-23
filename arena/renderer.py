@@ -20,6 +20,7 @@ ACTION_NAMES = {
 REASON_NAMES = {
     "model_argmax": "模型首选", "backtrack_avoided": "避免折返",
     "planner_rerank": "规划重排", "planner_route": "最短路导航",
+    "boss_tactics": "Boss 机制反制",
     "survival_heal": "低血量优先治疗", "survival_dodge": "避开敌方攻击", "forced": "唯一可选",
 }
 
@@ -75,9 +76,10 @@ class ArenaRenderer:
         for position in env.walls:
             self._sprite(position, "wall")
         for position in env.reflectors:
+            used = hasattr(env.boss, "used_reflectors") and position in env.boss.used_reflectors
             center = (position[0] * self.CELL + self.CELL // 2,
                       position[1] * self.CELL + self.CELL // 2)
-            pg.draw.polygon(self.screen, (77, 216, 241),
+            pg.draw.polygon(self.screen, (79, 90, 105) if used else (77, 216, 241),
                             [(center[0], center[1] - 15), (center[0] + 12, center[1]),
                              (center[0], center[1] + 15), (center[0] - 12, center[1])], 3)
             pg.draw.line(self.screen, (235, 250, 255),

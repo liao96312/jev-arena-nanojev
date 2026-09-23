@@ -34,12 +34,17 @@ class RuleAgent:
                         simulation.boss.target else remaining[0])
                 value -= 1.2 * simulation._distance(simulation.player.position, (head, 12))
             else:
-                # Keep the Boss's locked ray passing through a mirror until it fires.
-                value -= .8 * simulation._distance(simulation.player.position, (10, 15))
+                baits = simulation.prism_baits()
+                if baits:
+                    value -= .8 * min(simulation._distance(simulation.player.position, bait) for bait in baits)
+                if simulation.boss.target and simulation.boss_ray() and simulation.boss_ray()[-1] in simulation.reflectors:
+                    value += 2
         if env.boss and env.boss.exposed_rounds and action.value.startswith("shoot_"):
             value += 20
         if isinstance(simulation.boss, FurnaceHydra) and simulation.boss.exposed_rounds:
             value -= 2 * abs(simulation.player.position[0] - 10)
+        if simulation.boss and simulation.boss.exposed_rounds:
+            value -= 2 * abs(simulation.player.position[0] - simulation.boss.position[0])
         if (isinstance(env.boss, FurnaceHydra) and env.boss.target and
                 env.boss.attack_kind == "fireball"):
             value += 5 * min(2, env._distance(simulation.player.position, env.boss.target))

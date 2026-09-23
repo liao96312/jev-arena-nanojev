@@ -171,7 +171,7 @@ class ArenaEnv:
                 self.medkits, self.energy_cells = {(7, 14), (13, 14)}, {(7, 15), (13, 15)}
                 self.bow_pickups, self.pistol_pickups = set(), {(10, 14)}
                 self.arrow_bundles = set()
-                self.reflectors = {(x, 12) for x in (9, 10, 11)}
+                self.reflectors = {(9, 12), (11, 12), (8, 13), (12, 13)}
                 self.boss = PrismWarden()
             else:
                 self.walls |= {(5, 8), (14, 8), (5, 9), (14, 9),
@@ -277,8 +277,17 @@ class ArenaEnv:
         if not isinstance(self.boss, PrismWarden) or self.boss.target is None:
             return ()
         cells = ray_cells(self.boss.position, self.boss.target)
-        mirror = next((index for index, cell in enumerate(cells) if cell in self.reflectors), None)
+        mirror = next((index for index, cell in enumerate(cells)
+                       if cell in self.reflectors - self.boss.used_reflectors), None)
         return cells[:mirror + 1] if mirror is not None else cells
+
+    def prism_baits(self) -> set[tuple[int, int]]:
+        if not isinstance(self.boss, PrismWarden) or self.boss.position[1] != 8:
+            return set()
+        unused = self.reflectors - self.boss.used_reflectors
+        return {(x, y) for y in range(14, 17) for x in range(4, 16)
+                if (x, y) not in self.walls | self.fires | self.spikes | self.pits and
+                any(cell in unused for cell in ray_cells(self.boss.position, (x, y)))}
 
     def _ensure_pickups_reachable(self) -> None:
         reachable = self._reachable_cells()
@@ -569,6 +578,7 @@ class ArenaEnv:
             boss.exposed_rounds -= 1
             if not boss.exposed_rounds:
                 boss.reflections = 0
+                boss.used_reflectors.clear()
                 boss.lunge_used = False
                 events.append("boss_shield_restored")
             return 0.0
@@ -599,19 +609,21 @@ class ArenaEnv:
             return 0.0
         path = self.boss_ray()
         endpoint = path[-1] if path else boss.position
-        reflected = endpoint in self.reflectors
+        reflected = endpoint in self.reflectors - boss.used_reflectors
         events.append(f"boss_prism_shot:{boss.position[0]}:{boss.position[1]}:"
                       f"{endpoint[0]}:{endpoint[1]}:{int(reflected)}")
         reward = 0.0
         if reflected:
+            boss.used_reflectors.add(endpoint)
             boss.reflections += 1
             events.append(f"boss_reflect:{boss.reflections}")
             if boss.reflections == 3:
-                boss.exposed_rounds = 2
+                boss.exposed_rounds = 3
                 events.append("boss_shield_break")
                 reward += 15
         elif self.player.position in path:
             reward += self._damage_entity(self.player, boss.beam_damage, events, "boss_prism")
+        boss.shots_fired += 1
         if boss.exposed_rounds == 0:
             if boss.reflections == 2 and not boss.lunge_used:
                 target = (max(5, min(14, self.player.position[0])),
@@ -624,9 +636,9 @@ class ArenaEnv:
                 events.append(f"boss_lunge_aim:{target[0]}:{target[1]}")
                 return reward
             previous = boss.position
-            x = (10, 11, 10, 9)[self.round % 4]
+            x = (10, 9, 11)[boss.shots_fired % 3]
             boss.position = (x, previous[1])
-            boss.target = self.player.position
+            boss.target = None
             if previous != boss.position:
                 events.append(f"boss_move:{previous[0]}:{previous[1]}:{x}:{previous[1]}")
         else:
@@ -988,6 +1000,7 @@ class ArenaEnv:
             "walls": tuple(sorted(self.walls)),
             "enemies": tuple((enemy.position, enemy.hp) for enemy in self.enemies),
             "boss": (("prism", self.boss.position, self.boss.hp, self.boss.reflections,
+                      tuple(sorted(self.boss.used_reflectors)), self.boss.shots_fired,
                       self.boss.exposed_rounds, self.boss.target, self.boss.lunge_target,
                       self.boss.returning) if isinstance(self.boss, PrismWarden) else
                      ("furnace", self.boss.position, self.boss.hp, tuple(sorted(self.boss.valves_opened)),

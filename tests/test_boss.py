@@ -5,13 +5,15 @@ from arena import ArenaEnv, campaign_config
 from arena.candidates import build_candidates
 from arena.entities import Action
 from arena.observation import encode_state
+from nanojev_adapter.policy import select_action
 
 
 class PrismBossTests(unittest.TestCase):
     def test_fixed_room_and_model_context(self):
         env = ArenaEnv(campaign_config(10))
         self.assertEqual(env.player.position, (10, 15))
-        self.assertEqual(env.reflectors, {(9, 12), (10, 12), (11, 12)})
+        self.assertEqual(env.reflectors, {(9, 12), (11, 12), (8, 13), (12, 13)})
+        self.assertEqual({y for _, y in env.reflectors}, {12, 13})
         self.assertIn((6, 10), env.walls)
         self.assertNotIn((4, 4), env.walls)
         self.assertIn((3, 1), env.walls)
@@ -28,15 +30,25 @@ class PrismBossTests(unittest.TestCase):
     def test_warning_matches_damage_and_mirror_blocks(self):
         env = ArenaEnv(campaign_config(10))
         env.round = 3
+        env.player.position = (9, 15)
         env.boss.target = env.player.position
-        self.assertEqual(env.boss_ray()[-1], (10, 12))
+        self.assertEqual(env.boss_ray()[-1], (9, 12))
         env.step(Action.WAIT)
         reflected = env.step(Action.WAIT)
         self.assertIn("boss_reflect:1", reflected.events)
         self.assertEqual(env.player.hp, 100)
-        env.boss.position = (9, 8)
-        env.boss.target = (8, 15)
-        env.player.position = (8, 14)
+        self.assertEqual(env.boss.used_reflectors, {(9, 12)})
+        env.boss.position = (10, 8)
+        env.boss.target = (9, 15)
+        self.assertEqual(env.boss_ray()[-1], (9, 15))
+        env.step(Action.WAIT)
+        used = env.step(Action.WAIT)
+        self.assertNotIn("boss_reflect:2", used.events)
+        self.assertIn("damage:boss_prism:14", used.events)
+
+        env.boss.position = (10, 8)
+        env.boss.target = (10, 15)
+        env.player.position = (10, 14)
         self.assertIn(env.player.position, env.boss_ray())
         env.step(Action.WAIT)
         hit = env.step(Action.WAIT)
@@ -55,6 +67,21 @@ class PrismBossTests(unittest.TestCase):
         self.assertIn("boss_shield_break", events)
         self.assertTrue(any(event.startswith("boss_lunge_aim:") for event in events))
         self.assertIn("boss_lunge", events)
+        self.assertIn("boss_defeated", events)
+
+    def test_default_hybrid_policy_pursues_boss_kill_with_flat_model_scores(self):
+        env = ArenaEnv(campaign_config(10))
+        events = []
+        for _ in range(100):
+            if env.done:
+                break
+            scores = {action.value: 1.0 for action in env.legal_actions()}
+            choice, _ = select_action(scores, env, "hybrid")
+            events.extend(env.step(choice).events)
+        self.assertTrue(env.done)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(sum(event.startswith("boss_reflect:") for event in events), 3)
+        self.assertEqual(len(env.reflectors), 4)
         self.assertIn("boss_defeated", events)
 
     def test_lunge_warning_matches_damage_zone_and_can_be_dodged(self):

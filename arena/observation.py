@@ -85,7 +85,7 @@ def encode_state(env: ArenaEnv) -> str:
                 f"aim={target if target else 'none'} "
                 f"lunge={env.boss.lunge_target or 'none'} "
                 f"dmg=beam{env.boss.beam_damage}/lunge{env.boss.lunge_damage} "
-                f"mirrors={sorted(env.reflectors)}.")
+                f"mirrors={sorted(env.reflectors - env.boss.used_reflectors)}.")
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
         f"r={env.round} ap={env.ap_remaining}/{env.config.action_points} "

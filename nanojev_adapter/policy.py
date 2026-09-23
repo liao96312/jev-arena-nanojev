@@ -1,17 +1,20 @@
 import math
 from collections import deque
 
+from arena.boss import PrismWarden
 
-def _gem_route_actions(env, probabilities: dict[str, float]) -> set[str]:
+
+def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
     moves = {}
     for action in probabilities:
         if action.startswith(("move_", "dash_")):
             target = env.add(env.player.position, action[-1])
             moves[action] = env.add(target, action[-1]) if action.startswith("dash_") else target
     blocked = set(env.walls) | set(env.pits) | set(env.barrels) | {enemy.position for enemy in env.enemies}
-    targets = (env.medkits if env.player.hp <= 60 and env.medkits else
-               ((env.bow_pickups if not env.player.loadout.bow else set()) |
-                (env.pistol_pickups if not env.player.loadout.pistol else set())) or env.gems)
+    if targets is None:
+        targets = (env.medkits if env.player.hp <= 60 and env.medkits else
+                   ((env.bow_pickups if not env.player.loadout.bow else set()) |
+                    (env.pistol_pickups if not env.player.loadout.pistol else set())) or env.gems)
 
     def distance(start: tuple[int, int], avoid_fire: bool) -> int | None:
         queue, seen = deque([(start, 0)]), {start}
@@ -50,7 +53,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
     if mode == "model":
         return argmax, "model_argmax"
     risks = {action: 0 for action in probabilities}
-    if env.enemies or env.fires or env.spikes or env.barrels:
+    if env.enemies or env.fires or env.spikes or env.barrels or env.boss:
         legal = {action.value for action in env.legal_actions()}
         for action in probabilities:
             if action not in legal:
@@ -106,6 +109,23 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
+    if mode == "hybrid" and isinstance(env.boss, PrismWarden):
+        boss = env.boss
+        if boss.exposed_rounds:
+            shots = {action for action in safest if action.startswith("shoot_")}
+            if shots:
+                return max(sorted(shots), key=probabilities.__getitem__), "boss_tactics"
+            targets = {(boss.position[0], y) for y in range(9, 17)} - env.walls
+        else:
+            targets = env.prism_baits()
+            if boss.target and env.boss_ray() and env.boss_ray()[-1] in env.reflectors:
+                if "wait" in safest:
+                    return "wait", "boss_tactics"
+            if boss.target is None and env.player.position in targets and "wait" in safest:
+                return "wait", "boss_tactics"
+        routes = _gem_route_actions(env, probabilities, targets) & safest
+        if routes:
+            return max(sorted(routes), key=probabilities.__getitem__), "boss_tactics"
     needs_medkit = env.player.hp <= 50 and bool(env.medkits)
     if mode == "hybrid" and env.gems and (chosen.startswith(("move_", "dash_")) or
                                            chosen == "wait" or needs_medkit):

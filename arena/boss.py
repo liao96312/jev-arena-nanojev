@@ -7,11 +7,13 @@ class PrismWarden:
     hp: int = 60
     max_hp: int = 60
     reflections: int = 0
+    used_reflectors: set[tuple[int, int]] = field(default_factory=set)
     exposed_rounds: int = 0
     target: tuple[int, int] | None = None
     lunge_target: tuple[int, int] | None = None
     returning: bool = False
     lunge_used: bool = False
+    shots_fired: int = 0
     beam_damage: int = 14
     lunge_damage: int = 24
 
