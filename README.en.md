@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[简体中文](README.md) | **English**
+[简体中文](README.md) | **English** | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md)
 
 **A fully local tactical arena driven by NanoJev**
 
@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#data-generation-and-training)
-[![Tests](https://img.shields.io/badge/Tests-93%20passing-22C55E)](#tests-and-validation)
+[![Tests](https://img.shields.io/badge/Tests-94%20passing-22C55E)](#tests-and-validation)
 
 Not a pre-scripted combat demo: at every step the model faces the real candidate actions and has to choose between moving, attacking, shooting, healing, dashing and environment chain reactions.
 
@@ -149,7 +149,7 @@ Recording and replay:
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-Environment, combat, maps, weapons, save files, replay, search and model adapters currently share **93 regression tests**.
+Environment, combat, maps, weapons, save files, replay, search and model adapters currently share **94 regression tests**.
 
 <details>
 <summary><strong>Experiments and baseline results</strong></summary>
@@ -161,6 +161,7 @@ Environment, combat, maps, weapons, save files, replay, search and model adapter
 - 2 AP head-only smoke test: dev CE 2.5745 → 2.1137, GTX 1660S peak VRAM 2.53GB.
 - 100k stratified quick checkpoint: 1k records, 20 steps, about 5 minutes, dev CE 2.4718 → 2.2208, peak VRAM 2.52GB.
 - Real level 3 hybrid benchmark, 4×100: 4/4 collected every gem, 0 deaths.
+- Beam Teacher 10k distillation: 500 steps took about 74 minutes; in the same-seed level 3 4x100 comparison the pure model reward rose from 14.35 to 71.53 and collected gems from 0 to 5, but it still cannot clear the level on its own; the hybrid policy reward rose from 98.79 to 106.10, and both cleared 4/4. This is a small-sample smoke test, not a formal 100-seed conclusion.
 
 Detailed files:
 
@@ -169,6 +170,7 @@ Detailed files:
 - [`baselines/v2/mcts_rule_3x100.json`](baselines/v2/mcts_rule_3x100.json)
 - [`baselines/v2/complexity_100x100.json`](baselines/v2/complexity_100x100.json)
 - [`baselines/v2/nanojev_ap_benchmark_4x100.json`](baselines/v2/nanojev_ap_benchmark_4x100.json)
+- [`baselines/v2/beam_distillation_4x100.json`](baselines/v2/beam_distillation_4x100.json)
 
 </details>
 
