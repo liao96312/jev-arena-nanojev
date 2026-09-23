@@ -49,7 +49,21 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
     argmax = greedy(probabilities)
     if mode == "model":
         return argmax, "model_argmax"
-    if mode == "hybrid" and env.player.hp <= 50 and "heal" in probabilities:
+    risks = {action: 0 for action in probabilities}
+    if env.enemies or env.fires or env.spikes or env.barrels:
+        legal = {action.value for action in env.legal_actions()}
+        for action in probabilities:
+            if action not in legal:
+                continue
+            simulation = env.clone()
+            simulation.step(action)
+            pending = (sum(power for _, power in simulation.imminent_threats())
+                       if not simulation.done and simulation.ap_remaining < simulation.config.action_points else 0)
+            risks[action] = (float("inf") if simulation.player.hp <= 0 else
+                             simulation.damage_taken - env.damage_taken + pending)
+    lowest_risk = min(risks.values())
+    safest = {action for action, risk in risks.items() if risk == lowest_risk}
+    if mode == "hybrid" and env.player.hp <= 50 and "heal" in safest:
         return "heal", "survival_heal"
     safe_non_backtracking = [action for action in probabilities if action.startswith("move_") and
                              env.add(env.player.position, action[-1]) != env.previous_player_position and
@@ -62,7 +76,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             if action.startswith("dash_"):
                 target = env.add(target, action[-1])
             if target == env.previous_player_position and safe_non_backtracking:
-                return -math.inf
+                value -= 1.4
             if action.startswith("move_") and target in env.fires:
                 value -= 2.0
             if action.startswith("move_") and target in env.spikes:
@@ -91,17 +105,19 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             return -math.inf
         return value
 
-    chosen = max(sorted(probabilities), key=score)
+    chosen = max(sorted(safest), key=score)
     needs_medkit = env.player.hp <= 50 and bool(env.medkits)
     if mode == "hybrid" and env.gems and (chosen.startswith(("move_", "dash_")) or
                                            chosen == "wait" or needs_medkit):
-        routes = _gem_route_actions(env, probabilities)
+        routes = _gem_route_actions(env, probabilities) & safest
         if routes:
             routed = max(sorted(routes), key=probabilities.__getitem__)
             if routed != chosen:
                 return routed, "planner_route"
     if chosen == argmax:
         return chosen, "model_argmax"
+    if argmax not in safest:
+        return chosen, "survival_dodge"
     if argmax.startswith("move_") and env.add(env.player.position, argmax[-1]) == env.previous_player_position:
         return chosen, "backtrack_avoided"
     return chosen, "planner_rerank"

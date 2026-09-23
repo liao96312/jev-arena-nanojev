@@ -149,7 +149,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **94 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **95 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

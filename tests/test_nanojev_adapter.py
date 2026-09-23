@@ -1,6 +1,7 @@
 import unittest
 
 from arena import ArenaConfig, ArenaEnv
+from arena.entities import Enemy, EnemyType, Intent, IntentType
 from agents.nanojev_agent import NanoJevAgent
 from nanojev_adapter.schema import decision_request, parse_probabilities
 from nanojev_adapter.policy import greedy_avoid_backtrack, select_action
@@ -58,6 +59,19 @@ class NanoJevAdapterTests(unittest.TestCase):
         env.step("move_e")
         action, reason = greedy_avoid_backtrack({"move_w": .7, "move_n": .2, "wait": .1}, env)
         self.assertEqual((action, reason), ("move_n", "backtrack_avoided"))
+
+    def test_hybrid_backtracks_to_dodge_lethal_shot_even_when_gem_is_ahead(self):
+        for action_points in (1, 2):
+            with self.subTest(action_points=action_points):
+                env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                           medkits=0, action_points=action_points))
+                env.player.position, env.previous_player_position = (2, 2), (1, 2)
+                env.player.hp, env.ap_remaining = 10, 1 if action_points == 1 else 2
+                env.gems = {(2, 4)}
+                env.enemies = [Enemy((2, 0), enemy_type=EnemyType.ARCHER,
+                                     intent=Intent(IntentType.SHOOT, "s", 1, 12))]
+                action, reason = select_action({"move_w": .25, "move_s": .7, "wait": .05}, env, "hybrid")
+                self.assertEqual((action, reason), ("move_w", "survival_dodge"))
 
     def test_policy_uses_model_probability_plus_gem_progress(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0, medkits=0))

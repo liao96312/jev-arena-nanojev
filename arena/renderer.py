@@ -19,7 +19,7 @@ ACTION_NAMES = {
 REASON_NAMES = {
     "model_argmax": "模型首选", "backtrack_avoided": "避免折返",
     "planner_rerank": "规划重排", "planner_route": "最短路导航",
-    "survival_heal": "低血量优先治疗", "forced": "唯一可选",
+    "survival_heal": "低血量优先治疗", "survival_dodge": "避开敌方攻击", "forced": "唯一可选",
 }
 
 
