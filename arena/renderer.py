@@ -160,8 +160,12 @@ class ArenaRenderer:
                 continue
             if event.startswith("boss_prism_shot:"):
                 parts = event.split(":")
-                self._projectile_effect((int(parts[1]), int(parts[2])),
-                                        (int(parts[3]), int(parts[4])), progress,
+                start, end = (int(parts[1]), int(parts[2])), (int(parts[3]), int(parts[4]))
+                reflected = parts[5] == "1"
+                shot_start, shot_end = ((end, start) if reflected and progress >= .5 else (start, end))
+                shot_progress = ((progress - .5) * 2 if reflected and progress >= .5 else
+                                 progress * 2 if reflected else progress)
+                self._projectile_effect(shot_start, shot_end, shot_progress,
                                         "projectile_boss_prism", (215, 95, 255))
                 continue
             if not event.startswith("archer_shot:"):
@@ -262,7 +266,8 @@ class ArenaRenderer:
             elif name in ("projectile_player_pulse", "projectile_player_arrow"):
                 limit = round(self.CELL * 1.35)
             elif name in ("projectile_boss_prism", "effect_boss_prism_burst", "boss_prism_warden"):
-                limit = round(self.CELL * (1.5 if name == "projectile_boss_prism" else 2.1))
+                limit = round(self.CELL * (1.5 if name == "projectile_boss_prism" else
+                                           2.9 if name == "boss_prism_warden" else 2.5))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -436,6 +441,21 @@ class ArenaRenderer:
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
     def _boss_telegraph(self, env: ArenaEnv) -> None:
+        if env.boss and env.boss.lunge_target:
+            target = env.boss.lunge_target
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            for x, y in ((target[0], target[1]), (target[0] - 1, target[1]),
+                         (target[0] + 1, target[1]), (target[0], target[1] - 1),
+                         (target[0], target[1] + 1)):
+                if env.in_bounds((x, y)):
+                    self.pg.draw.rect(overlay, (255, 78, 45, 115),
+                                      (x * self.CELL + 2, y * self.CELL + 2,
+                                       self.CELL - 4, self.CELL - 4), border_radius=5)
+            center = (target[0] * self.CELL + self.CELL // 2,
+                      target[1] * self.CELL + self.CELL // 2)
+            self.pg.draw.circle(overlay, (255, 236, 170, 240), center, 19, 3)
+            self.screen.blit(overlay, (0, 0))
+            return
         path = env.boss_ray()
         if not path or not env.boss:
             return
@@ -512,6 +532,8 @@ class ArenaRenderer:
             elif event == "boss_aim": labels.append("棱镜守卫锁定目标！")
             elif event.startswith("boss_prism_shot:"): labels.append("棱镜弹发射！")
             elif event.startswith("boss_reflect:"): labels.append("镜柱反射：护盾松动！")
+            elif event.startswith("boss_lunge_aim:"): labels.append("Boss 突进预警：躲开红色区域！")
+            elif event == "boss_lunge": labels.append("Boss 突进！")
             elif event == "boss_shield_break": labels.append("护盾破裂！攻击核心！")
             elif event == "boss_shield": labels.append("护盾阻挡攻击")
             elif event.startswith("boss_hit:"): labels.append(f"核心受到 {event.split(':')[1]} 点伤害")

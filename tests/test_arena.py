@@ -547,6 +547,21 @@ class ArenaTests(unittest.TestCase):
         self.assertEqual(result.events.count("barrel_explode"), 2)
         self.assertEqual(env.environment_kills, 1)
 
+    def test_barrel_radius_two_reaches_outer_diamond_not_beyond(self):
+        env = ArenaEnv(ArenaConfig(width=8, height=8, walls=0, enemies=0, gems=0,
+                                   fires=0, medkits=0))
+        env.player.position = (2, 2)
+        env.barrels = {(3, 2)}
+        near = Enemy((5, 2), hp=20, stunned=2)
+        far = Enemy((6, 2), hp=20, stunned=2)
+        env.enemies = [near, far]
+        env._plan_enemy_intents()
+        result = env.step(Action.ATTACK_E)
+        self.assertIn("explosion_at:3:2:2", result.events)
+        self.assertNotIn(near, env.enemies)
+        self.assertIn(far, env.enemies)
+        self.assertEqual(env.player.hp, 75)
+
     def test_pistol_can_detonate_barrel_before_enemy(self):
         env = ArenaEnv(ArenaConfig(width=8, height=3, walls=0, enemies=0, gems=0, fires=0,
                                    medkits=0), PlayerLoadout(pistol=True, energy=2))

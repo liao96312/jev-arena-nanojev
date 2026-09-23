@@ -53,8 +53,8 @@ class ArenaConfig:
     dash_cooldown: int = 3
     emp_cooldown: int = 4
     emp_radius: int = 1
-    barrel_damage: int = 20
-    barrel_radius: int = 1
+    barrel_damage: int = 25
+    barrel_radius: int = 2
     action_points: int = 1
     dash_ap_cost: int = 1
     emp_ap_cost: int = 1
@@ -92,7 +92,7 @@ def campaign_config(level: int) -> ArenaConfig:
         collision_damage=15 + (level - 1) // 4,
         bomber_damage=20 + (level - 1) // 3,
         archer_damage=12 + (level - 1) // 4,
-        barrel_damage=20 + (level - 1) // 3,
+        barrel_damage=25 + (level - 1) // 3,
         enemy_move_interval=2,
         charger_ratio=min(0.45, 0.2 + level * 0.03),
         bomber_ratio=min(0.25, 0.1 + level * 0.02),
@@ -147,12 +147,16 @@ class ArenaEnv:
             self.player = Player((10, 15), loadout=self.loadout)
             self.player.loadout.pistol = True
             self.player.loadout.energy = max(12, self.player.loadout.energy)
-            self.walls = {(x, y) for x in range(3, 17) for y in (3, 17)} | {
-                (x, y) for y in range(4, 17) for x in (3, 16)}
+            room = {(x, y) for y in range(1, 19)
+                    for x in range(3 if y in (1, 2, 17, 18) else 1,
+                                   17 if y in (1, 2, 17, 18) else 19)}
+            self.walls = {cell for cell in room
+                          if any(self.add(cell, direction) not in room for direction in DIRECTIONS)}
+            self.walls |= {(6, 10), (14, 10), (6, 13), (14, 13)}
             self.enemies, self.gems, self.fires, self.spikes = [], set(), set(), set()
-            self.pits, self.barrels, self.medkits = set(), set(), set()
-            self.bow_pickups, self.pistol_pickups = set(), set()
-            self.arrow_bundles, self.energy_cells = set(), set()
+            self.pits, self.barrels, self.medkits = set(), set(), {(7, 14), (13, 14)}
+            self.bow_pickups, self.pistol_pickups = set(), {(10, 14)}
+            self.arrow_bundles, self.energy_cells = set(), {(7, 15), (13, 15)}
             self.reflectors = {(x, 12) for x in (9, 10, 11)}
             self.boss = PrismWarden()
             return
@@ -537,7 +541,29 @@ class ArenaEnv:
             boss.exposed_rounds -= 1
             if not boss.exposed_rounds:
                 boss.reflections = 0
+                boss.lunge_used = False
                 events.append("boss_shield_restored")
+            return 0.0
+        if boss.lunge_target:
+            destination = boss.lunge_target
+            boss.lunge_target = None
+            reward = 0.0
+            if self._distance(self.player.position, destination) <= 1:
+                reward += self._damage_entity(self.player, boss.lunge_damage, events, "boss_lunge")
+            if self.player.position != destination:
+                previous = boss.position
+                boss.position = destination
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{destination[0]}:{destination[1]}")
+            boss.returning = True
+            events.append("boss_lunge")
+            return reward
+        if boss.returning:
+            previous = boss.position
+            boss.position = (10, 8)
+            boss.returning = False
+            boss.target = self.player.position
+            events.append(f"boss_move:{previous[0]}:{previous[1]}:10:8")
+            events.append("boss_aim")
             return 0.0
         if boss.target is None:
             boss.target = self.player.position
@@ -557,8 +583,18 @@ class ArenaEnv:
                 events.append("boss_shield_break")
                 reward += 15
         elif self.player.position in path:
-            reward += self._damage_entity(self.player, 16, events, "boss_prism")
+            reward += self._damage_entity(self.player, boss.beam_damage, events, "boss_prism")
         if boss.exposed_rounds == 0:
+            if boss.reflections == 2 and not boss.lunge_used:
+                target = (max(5, min(14, self.player.position[0])),
+                          max(9, min(15, self.player.position[1] - 1)))
+                if target in self.walls or target in self.reflectors:
+                    target = self.player.position
+                boss.lunge_target = target
+                boss.lunge_used = True
+                boss.target = None
+                events.append(f"boss_lunge_aim:{target[0]}:{target[1]}")
+                return reward
             previous = boss.position
             x = (10, 11, 10, 9)[self.round % 4]
             boss.position = (x, previous[1])
@@ -818,7 +854,9 @@ class ArenaEnv:
         position = position or self.player.position
         threats: list[tuple[str, int]] = []
         if self.boss and self.boss.target and position in self.boss_ray():
-            threats.append(("prism_warden/beam", 16))
+            threats.append(("prism_warden/beam", self.boss.beam_damage))
+        if self.boss and self.boss.lunge_target and self._distance(position, self.boss.lunge_target) <= 1:
+            threats.append(("prism_warden/lunge", self.boss.lunge_damage))
         for enemy in self.enemies:
             intent = enemy.intent
             if not intent or intent.countdown > 1:
@@ -872,7 +910,8 @@ class ArenaEnv:
             "walls": tuple(sorted(self.walls)),
             "enemies": tuple((enemy.position, enemy.hp) for enemy in self.enemies),
             "boss": (self.boss.position, self.boss.hp, self.boss.reflections,
-                     self.boss.exposed_rounds, self.boss.target) if self.boss else None,
+                     self.boss.exposed_rounds, self.boss.target, self.boss.lunge_target,
+                     self.boss.returning) if self.boss else None,
             "reflectors": tuple(sorted(self.reflectors)),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,
                                     enemy.intent.kind.value if enemy.intent else None,
