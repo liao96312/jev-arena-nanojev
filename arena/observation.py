@@ -70,6 +70,12 @@ def encode_state(env: ArenaEnv) -> str:
     if env.pits:
         hazards += f" p{_nearest(env.player.position, list(env.pits))}"
     barrel = f" barrel={_nearest(env.player.position, list(env.barrels))}" if env.barrels else ""
+    boss = ""
+    if env.boss:
+        target = env.boss.target
+        boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
+                f"reflect={env.boss.reflections}/3 exposed={env.boss.exposed_rounds} "
+                f"aim={target if target else 'none'} mirrors={sorted(env.reflectors)}.")
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
         f"r={env.round} ap={env.ap_remaining}/{env.config.action_points} "
@@ -82,5 +88,5 @@ def encode_state(env: ArenaEnv) -> str:
         f"I {intents}. "
         f"{threat_summary}"
         f"# e={len(env.enemies)} g={len(env.gems)} kit={env.player.medkits}."
-        f"{inventory}"
+        f"{inventory}{boss}"
     )

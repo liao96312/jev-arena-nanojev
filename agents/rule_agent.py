@@ -9,6 +9,8 @@ class RuleAgent:
         return max(env.legal_actions(), key=lambda action: self._value(env, action))
 
     def _value(self, env: ArenaEnv, action: Action) -> float:
+        if env.boss and not env.boss.exposed_rounds and action.value.startswith("shoot_"):
+            return -100.0
         simulation = env.clone()
         before_hp = sum(enemy.hp for enemy in simulation.enemies)
         result = simulation.step(action)
@@ -24,6 +26,12 @@ class RuleAgent:
         targets = list(simulation.medkits) if simulation.player.hp <= 50 and simulation.medkits else list(simulation.gems)
         if targets:
             value -= .05 * min(simulation._distance(simulation.player.position, target) for target in targets)
+        if simulation.boss and not simulation.boss.exposed_rounds:
+            # Keep the Boss's locked ray passing through a mirror until it fires.
+            lure = (10, 15)
+            value -= .8 * simulation._distance(simulation.player.position, lure)
+        if env.boss and env.boss.exposed_rounds and action.value.startswith("shoot_"):
+            value += 20
         if simulation.player.position == env.previous_player_position:
             value -= .5
         return value

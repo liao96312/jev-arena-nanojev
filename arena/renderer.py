@@ -69,6 +69,14 @@ class ArenaRenderer:
                 pg.draw.rect(self.screen, colors["grid"], rect, 1)
         for position in env.walls:
             self._sprite(position, "wall")
+        for position in env.reflectors:
+            center = (position[0] * self.CELL + self.CELL // 2,
+                      position[1] * self.CELL + self.CELL // 2)
+            pg.draw.polygon(self.screen, (77, 216, 241),
+                            [(center[0], center[1] - 15), (center[0] + 12, center[1]),
+                             (center[0], center[1] + 15), (center[0] - 12, center[1])], 3)
+            pg.draw.line(self.screen, (235, 250, 255),
+                         (center[0] - 7, center[1] + 6), (center[0] + 7, center[1] - 6), 2)
         for position in env.pits:
             self._sprite(position, "pit")
         for position in env.spikes:
@@ -89,6 +97,8 @@ class ArenaRenderer:
                 self._sprite(position, sprite)
         for enemy in env.enemies:
             self._intent_line(env, enemy)
+        if env.boss:
+            self._boss_telegraph(env)
         for enemy in env.enemies:
             previous = old_enemies.get(id(enemy), enemy.position)
             position = (previous[0] + (enemy.position[0] - previous[0]) * eased,
@@ -96,6 +106,20 @@ class ArenaRenderer:
             self._sprite(position, f"enemy_{enemy.enemy_type.value}")
             self._health_bar(position, enemy.hp, enemy.max_hp)
             self._intent(enemy.position, enemy.intent)
+        if env.boss:
+            boss_position = env.boss.position
+            move = next((event.split(":") for event in events if event.startswith("boss_move:")), None)
+            if move:
+                boss_position = (int(move[1]) + (int(move[3]) - int(move[1])) * eased,
+                                 int(move[2]) + (int(move[4]) - int(move[2])) * eased)
+            self._sprite(boss_position, "boss_prism_warden")
+            if "boss_shield_break" in events:
+                self._sprite(boss_position, "effect_boss_prism_burst")
+            if any(event.startswith("boss_hit:") for event in events):
+                center = (round((boss_position[0] + .5) * self.CELL),
+                          round((boss_position[1] + .5) * self.CELL))
+                pg.draw.circle(self.screen, (255, 245, 255), center,
+                               round(26 * (1 - progress) + 4), 3)
         player_position = env.player.position
         attack_effect = None
         if animation:
@@ -134,6 +158,12 @@ class ArenaRenderer:
                 self._explosion_effect((int(parts[1]), int(parts[2])), progress,
                                        int(parts[3]) if len(parts) > 3 else 1)
                 continue
+            if event.startswith("boss_prism_shot:"):
+                parts = event.split(":")
+                self._projectile_effect((int(parts[1]), int(parts[2])),
+                                        (int(parts[3]), int(parts[4])), progress,
+                                        "projectile_boss_prism", (215, 95, 255))
+                continue
             if not event.startswith("archer_shot:"):
                 continue
             parts = event.split(":")
@@ -150,6 +180,11 @@ class ArenaRenderer:
 
         left = self.map_width + 20
         self._text(f"第 {level} 关 · Jev Arena", left, 20, colors["text"])
+        if env.boss:
+            state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                     f"镜面反射 {env.boss.reflections}/3")
+            self._text(f"棱镜守卫  HP {env.boss.hp}/{env.boss.max_hp}  {state}",
+                       left, 265, (244, 164, 255), small=True)
         self._text(f"智能体：{AGENT_NAMES.get(agent, agent)}", left, 55, colors["muted"])
         self._text(f"动作：{ACTION_NAMES.get(action, action)}", left, 80, colors["text"])
         self._text(f"推理耗时：{latency_ms:.1f} 毫秒", left, 105, colors["muted"])
@@ -168,7 +203,7 @@ class ArenaRenderer:
         self._text(f"武器：弓 {'未获得' if not loadout.bow else f'{loadout.arrows} 箭'}  "
                    f"手枪 {'未获得' if not loadout.pistol else f'{loadout.energy} 发'}",
                    left, 218, colors["muted"], small=True)
-        y = 245
+        y = 294 if env.boss else 245
         for name, probability in sorted(probabilities.items(), key=lambda item: item[1], reverse=True):
             self._text(f"{ACTION_NAMES.get(name, name)}  {probability:>6.1%}", left, y,
                        colors["text"], small=True)
@@ -215,7 +250,8 @@ class ArenaRenderer:
                      "gem", "fire", "medkit", "wall", "item_bow", "item_pulse_pistol",
                      "ammo_arrows", "ammo_energy_cell", "barrel", "spike", "pit",
                      "projectile_enemy_laser", "projectile_player_pulse", "projectile_player_arrow",
-                     "effect_player_slash", "effect_enemy_claw"):
+                     "effect_player_slash", "effect_enemy_claw", "boss_prism_warden",
+                     "projectile_boss_prism", "effect_boss_prism_burst"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -225,6 +261,8 @@ class ArenaRenderer:
                 limit = round(self.CELL * 1.8)
             elif name in ("projectile_player_pulse", "projectile_player_arrow"):
                 limit = round(self.CELL * 1.35)
+            elif name in ("projectile_boss_prism", "effect_boss_prism_burst", "boss_prism_warden"):
+                limit = round(self.CELL * (1.5 if name == "projectile_boss_prism" else 2.1))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -397,6 +435,25 @@ class ArenaRenderer:
         end_pixel = (end[0] * self.CELL + self.CELL // 2, end[1] * self.CELL + self.CELL // 2)
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
+    def _boss_telegraph(self, env: ArenaEnv) -> None:
+        path = env.boss_ray()
+        if not path or not env.boss:
+            return
+        overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+        for cell in path:
+            center = (cell[0] * self.CELL + self.CELL // 2,
+                      cell[1] * self.CELL + self.CELL // 2)
+            self.pg.draw.rect(overlay, (214, 65, 246, 75),
+                              (cell[0] * self.CELL + 2, cell[1] * self.CELL + 2,
+                               self.CELL - 4, self.CELL - 4), border_radius=5)
+            self.pg.draw.circle(overlay, (255, 222, 255, 215), center, 4)
+        start = (env.boss.position[0] * self.CELL + self.CELL // 2,
+                 env.boss.position[1] * self.CELL + self.CELL // 2)
+        end = (path[-1][0] * self.CELL + self.CELL // 2,
+               path[-1][1] * self.CELL + self.CELL // 2)
+        self.pg.draw.line(overlay, (235, 92, 255, 195), start, end, 3)
+        self.screen.blit(overlay, (0, 0))
+
     def _telegraph_line(self, start, end, kind: IntentType, countdown: int) -> None:
         """Draw readable danger telegraphs without adding another sprite dependency."""
         charge = kind == IntentType.CHARGE
@@ -452,6 +509,13 @@ class ArenaRenderer:
             elif event == "barrel_explode": labels.append("爆炸桶连锁爆炸！")
             elif event == "pit_fall": labels.append("敌人坠入深坑！")
             elif event.startswith("archer_shot:"): labels.append("敌方能量激光！")
+            elif event == "boss_aim": labels.append("棱镜守卫锁定目标！")
+            elif event.startswith("boss_prism_shot:"): labels.append("棱镜弹发射！")
+            elif event.startswith("boss_reflect:"): labels.append("镜柱反射：护盾松动！")
+            elif event == "boss_shield_break": labels.append("护盾破裂！攻击核心！")
+            elif event == "boss_shield": labels.append("护盾阻挡攻击")
+            elif event.startswith("boss_hit:"): labels.append(f"核心受到 {event.split(':')[1]} 点伤害")
+            elif event == "boss_defeated": labels.append("棱镜守卫已击败！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")

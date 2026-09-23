@@ -1,5 +1,6 @@
 from .entities import Action
 from .env import ArenaEnv
+from .boss import PrismWarden
 
 
 def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
@@ -22,6 +23,15 @@ def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
         parts.append("acquire_bow")
     if simulation.player.loadout.pistol != env.player.loadout.pistol:
         parts.append("acquire_pistol")
+    if env.boss and simulation.boss:
+        if simulation.boss.reflections != env.boss.reflections:
+            parts.append(f"reflect {env.boss.reflections}->{simulation.boss.reflections}")
+        if simulation.boss.exposed_rounds and not env.boss.exposed_rounds:
+            parts.append("core exposed")
+        if simulation.boss.hp != env.boss.hp:
+            parts.append(f"boss_hp {env.boss.hp}->{simulation.boss.hp}")
+    elif env.boss and not simulation.boss:
+        parts.append("boss defeated")
     threats = simulation.imminent_threats()
     if threats:
         parts.append(f"next_damage={sum(power for _, power in threats)}")
@@ -125,8 +135,10 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
             else:
                 enemy, distance = enemy_target
                 damage = env.config.bow_damage if weapon == "bow" else env.config.pistol_damage
-                description += f"; {enemy.enemy_type.value}/{distance} hp {enemy.hp}->{max(0, enemy.hp - damage)}"
-                if weapon == "bow" and enemy.hp > damage:
+                kind = "prism_warden" if isinstance(enemy, PrismWarden) else enemy.enemy_type.value
+                remaining = max(0, enemy.hp - damage) if not isinstance(enemy, PrismWarden) or enemy.exposed_rounds else enemy.hp
+                description += f"; {kind}/{distance} hp {enemy.hp}->{remaining}"
+                if weapon == "bow" and not isinstance(enemy, PrismWarden) and enemy.hp > damage:
                     description += "; push=1"
         consequence = _immediate_consequence(env, action)
         candidates[action.value] = description + ("; immediate: " + consequence if consequence else "")
