@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, ENEMY_SPEED_LEVEL, Action,
                        Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout)
-from .boss import FurnaceHydra, PrismWarden, StormChoir, ray_cells
+from .boss import ChronoMantis, FurnaceHydra, PrismWarden, StormChoir, ray_cells
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class ArenaConfig:
 def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
-    if level in (10, 20, 30):
+    if level in (10, 20, 30, 40):
         return ArenaConfig(difficulty_level=level, max_ticks=300, walls=0, enemies=0, gems=0,
                            fires=0, spikes=0, pits=0, barrels=0, medkits=0,
                            enemy_hp_bonus=level - 1, action_points=2, spawn_protection_rounds=2,
@@ -141,16 +141,18 @@ class ArenaEnv:
         raise RuntimeError("could not generate a playable map after 20 attempts")
 
     def _generate_map(self) -> None:
-        self.boss: PrismWarden | FurnaceHydra | StormChoir | None = None
+        self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | None = None
         self.reflectors: set[tuple[int, int]] = set()
         self.coolant_valves: set[tuple[int, int]] = set()
         self.grounding_pylons: set[tuple[int, int]] = set()
         self.relay_pads: set[tuple[int, int]] = set()
+        self.time_anchors: set[tuple[int, int]] = set()
         self.forge_floor: set[tuple[int, int]] = set()
-        if self.config.difficulty_level in (10, 20, 30) and self.config.finish_on_all_gems:
+        if self.config.difficulty_level in (10, 20, 30, 40) and self.config.finish_on_all_gems:
             furnace = self.config.difficulty_level == 20
             storm = self.config.difficulty_level == 30
-            self.player = Player((10, 16 if furnace or storm else 15), loadout=self.loadout)
+            chrono = self.config.difficulty_level == 40
+            self.player = Player((10, 16 if furnace or storm or chrono else 15), loadout=self.loadout)
             if furnace:
                 self.player.loadout.bow = True
                 self.player.loadout.arrows = max(10, self.player.loadout.arrows)
@@ -159,7 +161,7 @@ class ArenaEnv:
                                        2 if y in (2, 3, 16, 17) else 0,
                                        16 if y in (0, 1, 18, 19) else
                                        18 if y in (2, 3, 16, 17) else 20)}
-            elif storm:
+            elif storm or chrono:
                 self.player.loadout.pistol = True
                 self.player.loadout.energy = max(12, self.player.loadout.energy)
                 room = {(x, y) for y in range(20)
@@ -194,7 +196,7 @@ class ArenaEnv:
                 self.arrow_bundles = {(6, 16), (14, 16)}
                 self.coolant_valves = {(x, 12) for x in (7, 10, 13)}
                 self.boss = FurnaceHydra()
-            else:
+            elif storm:
                 self.walls |= {(5, 7), (14, 7), (5, 11), (14, 11),
                                (4, 14), (15, 14), (6, 16), (13, 16)}
                 self.pits = {(3, 9), (16, 9), (4, 16), (15, 16)}
@@ -204,6 +206,15 @@ class ArenaEnv:
                 self.grounding_pylons = {(8, 9), (12, 9), (11, 13), (7, 13)}
                 self.relay_pads = {(8, 8), (10, 8), (12, 8)}
                 self.boss = StormChoir()
+            else:
+                self.walls |= {(4, 8), (15, 8), (5, 10), (12, 10),
+                               (4, 13), (15, 13), (6, 15), (13, 15)}
+                self.pits = {(3, 11), (16, 11), (5, 16), (14, 16)}
+                self.medkits, self.energy_cells = {(6, 14), (13, 14)}, {(7, 15), (12, 15)}
+                self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
+                self.arrow_bundles = set()
+                self.time_anchors = {(9, 11), (14, 11)}
+                self.boss = ChronoMantis()
             return
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
@@ -291,7 +302,7 @@ class ArenaEnv:
     def enemy_at(self, position: tuple[int, int]) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
-    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | None:
+    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | None:
         return self.boss if self.boss and self.boss.position == position else None
 
     def boss_ray(self) -> tuple[tuple[int, int], ...]:
@@ -513,7 +524,7 @@ class ArenaEnv:
             events.append("pickup_energy")
         return reward
 
-    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir,
+    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis,
                        amount: int, events: list[str], source: str) -> float:
         if entity is self.player and self.player.invulnerable:
             events.append(f"invulnerable:{source}")
@@ -550,7 +561,7 @@ class ArenaEnv:
         return 20.0 if source in ("attack", "bow", "pistol") else 10.0
 
     def _ray_target(self, origin: tuple[int, int], direction: str,
-                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir, int] | None:
+                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis, int] | None:
         target = origin
         for distance in range(1, range_ + 1):
             target = self.add(target, direction)
@@ -610,6 +621,8 @@ class ArenaEnv:
             return self._resolve_furnace(boss, events)
         if isinstance(boss, StormChoir):
             return self._resolve_storm(boss, events)
+        if isinstance(boss, ChronoMantis):
+            return self._resolve_chrono(boss, events)
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if not boss.exposed_rounds:
@@ -760,6 +773,63 @@ class ArenaEnv:
             boss.position = ((10, 11, 9)[boss.attacks % 3], 5)
             if previous != boss.position:
                 events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:5")
+        return reward
+
+    def _resolve_chrono(self, boss: ChronoMantis, events: list[str]) -> float:
+        if boss.exposed_rounds:
+            boss.exposed_rounds -= 1
+            if not boss.exposed_rounds:
+                boss.phase = "flank"
+                events.append("boss_shield_restored")
+            return 0.0
+        if boss.phase == "flank":
+            previous = boss.position
+            x = 12 if boss.position[0] >= 12 else boss.position[0] + 2
+            boss.position = (x, 7)
+            boss.moves += 1
+            boss.slash_target = self.player.position
+            boss.phase = "slash"
+            events.extend((f"boss_move:{previous[0]}:{previous[1]}:{x}:7",
+                           f"chrono_slash_aim:{boss.slash_target[0]}:{boss.slash_target[1]}"))
+            return 0.0
+        if boss.phase == "slash":
+            target = boss.slash_target
+            reward = 0.0
+            events.append(f"chrono_slash:{target[0]}:{target[1]}")
+            if self._distance(self.player.position, target) <= 1:
+                reward += self._damage_entity(self.player, boss.slash_damage, events, "chrono_slash")
+            boss.leap_target = (9 if boss.position[0] >= 12 else 14, 7)
+            boss.leap_countdown = 2
+            boss.phase = "leap"
+            events.append(f"chrono_leap_aim:{boss.leap_target[0]}:{boss.leap_target[1]}")
+            return reward
+        if boss.leap_countdown > 1:
+            boss.leap_countdown -= 1
+            events.append(f"chrono_leap_charge:{boss.leap_target[0]}:{boss.leap_target[1]}")
+            return 0.0
+        if self.player.position == boss.leap_target:
+            boss.phase = "flank"
+            boss.slash_target = boss.leap_target = None
+            boss.leap_countdown = 0
+            events.append("chrono_leap_cancel")
+            return 0.0
+        previous = boss.position
+        boss.position = boss.leap_target
+        boss.moves += 1
+        events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:7")
+        events.append(f"chrono_leap:{boss.position[0]}:7")
+        reward = 0.0
+        if self.player.position == (boss.position[0], 11):
+            boss.exposed_rounds = 4
+            events.extend(("chrono_anchor", "chrono_echo_replay", "boss_shield_break"))
+            reward += 15
+        elif self.player.position == boss.slash_target:
+            reward += self._damage_entity(self.player, boss.echo_damage, events, "chrono_echo")
+            events.append(f"chrono_echo:{boss.slash_target[0]}:{boss.slash_target[1]}")
+        boss.phase = "flank"
+        boss.slash_target = None
+        boss.leap_target = None
+        boss.leap_countdown = 0
         return reward
 
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
@@ -1028,6 +1098,11 @@ class ArenaEnv:
                     threats.append(("storm_choir/arc", self.boss.arc_damage))
             elif self._distance(position, self.boss.target) <= 1:
                 threats.append(("storm_choir/surge", self.boss.surge_damage))
+        if isinstance(self.boss, ChronoMantis):
+            if self.boss.phase == "slash" and self._distance(position, self.boss.slash_target) <= 1:
+                threats.append(("chrono_mantis/slash", self.boss.slash_damage))
+            if self.boss.phase == "leap" and position == self.boss.slash_target:
+                threats.append(("chrono_mantis/echo", self.boss.echo_damage))
         for enemy in self.enemies:
             intent = enemy.intent
             if not intent or intent.countdown > 1:
@@ -1088,11 +1163,15 @@ class ArenaEnv:
                       self.boss.exposed_rounds, self.boss.attack_kind, self.boss.target,
                       self.boss.attacks) if isinstance(self.boss, FurnaceHydra) else
                      ("storm", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
-                      self.boss.attack_kind, self.boss.target, self.boss.attacks) if self.boss else None),
+                      self.boss.attack_kind, self.boss.target, self.boss.attacks) if isinstance(self.boss, StormChoir) else
+                     ("chrono", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
+                      self.boss.phase, self.boss.slash_target, self.boss.leap_target,
+                      self.boss.leap_countdown, self.boss.moves) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
             "coolant_valves": tuple(sorted(self.coolant_valves)),
             "grounding_pylons": tuple(sorted(self.grounding_pylons)),
             "relay_pads": tuple(sorted(self.relay_pads)),
+            "time_anchors": tuple(sorted(self.time_anchors)),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,
                                     enemy.intent.kind.value if enemy.intent else None,
                                     enemy.intent.direction if enemy.intent else None,

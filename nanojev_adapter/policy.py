@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-from arena.boss import FurnaceHydra, PrismWarden, StormChoir
+from arena.boss import ChronoMantis, FurnaceHydra, PrismWarden, StormChoir
 
 
 def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
@@ -109,7 +109,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
-    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir)):
+    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis)):
         boss = env.boss
         if boss.exposed_rounds:
             shots = {action for action in safest if action.startswith("shoot_")}
@@ -130,12 +130,17 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             if (env.player.position in targets and "wait" in safest and
                     not (boss.target and boss.attack_kind == "fireball")):
                 return "wait", "boss_tactics"
-        else:
+        elif isinstance(boss, StormChoir):
             targets = env.relay_pads
             chain_ready = (boss.target == env.player.position and boss.attack_kind == "chain" and
                            len(env.storm_chain()) == 6)
             if env.player.position in targets and "wait" in safest and (chain_ready or
                     (boss.target is None and boss.attacks % 2 == 0)):
+                return "wait", "boss_tactics"
+        else:
+            landing_x = boss.leap_target[0] if boss.leap_target else (9 if boss.position[0] >= 10 else 14)
+            targets = {(landing_x, 11)}
+            if env.player.position in targets and "wait" in safest and boss.phase != "slash":
                 return "wait", "boss_tactics"
         routes = _gem_route_actions(env, probabilities, targets) & safest
         if routes:

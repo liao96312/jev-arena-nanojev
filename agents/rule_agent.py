@@ -1,12 +1,17 @@
 from arena.entities import Action
 from arena.env import ArenaEnv
-from arena.boss import FurnaceHydra
+from arena.boss import ChronoMantis, FurnaceHydra, PrismWarden
+from nanojev_adapter.policy import select_action
 
 
 class RuleAgent:
     name = "rule"
 
     def act(self, env: ArenaEnv) -> Action:
+        if isinstance(env.boss, ChronoMantis):
+            actions = {action.value: 1.0 for action in env.legal_actions()}
+            choice, _ = select_action(actions, env, "hybrid")
+            return Action(choice)
         return max(env.legal_actions(), key=lambda action: self._value(env, action))
 
     def _value(self, env: ArenaEnv, action: Action) -> float:
@@ -33,7 +38,7 @@ class RuleAgent:
                 head = (simulation.boss.head_x if simulation.boss.attack_kind == "wave" and
                         simulation.boss.target else remaining[0])
                 value -= 1.2 * simulation._distance(simulation.player.position, (head, 12))
-            else:
+            elif isinstance(simulation.boss, PrismWarden):
                 baits = simulation.prism_baits()
                 if baits:
                     value -= .8 * min(simulation._distance(simulation.player.position, bait) for bait in baits)

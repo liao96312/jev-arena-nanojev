@@ -45,6 +45,21 @@ class StormChoir:
     arc_damage: int = 14
     surge_damage: int = 26
 
+
+@dataclass
+class ChronoMantis:
+    position: tuple[int, int] = (10, 7)
+    hp: int = 120
+    max_hp: int = 120
+    exposed_rounds: int = 0
+    phase: str = "flank"
+    slash_target: tuple[int, int] | None = None
+    leap_target: tuple[int, int] | None = None
+    leap_countdown: int = 0
+    moves: int = 0
+    slash_damage: int = 24
+    echo_damage: int = 18
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start

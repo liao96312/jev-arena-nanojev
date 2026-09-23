@@ -5,7 +5,7 @@ from pathlib import Path
 
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
-from arena.boss import FurnaceHydra, StormChoir
+from arena.boss import ChronoMantis, FurnaceHydra, StormChoir
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
@@ -68,7 +68,10 @@ class ArenaRenderer:
         for y in range(env.config.height):
             for x in range(env.config.width):
                 rect = pg.Rect(x * self.CELL, y * self.CELL, self.CELL, self.CELL)
-                if env.grounding_pylons:
+                if env.time_anchors:
+                    pg.draw.rect(self.screen, (37, 28, 53) if (x + y) % 2 else (43, 31, 59), rect)
+                    pg.draw.rect(self.screen, (82, 58, 100), rect, 1)
+                elif env.grounding_pylons:
                     pg.draw.rect(self.screen, (19, 31, 54) if (x + y) % 2 else (23, 37, 62), rect)
                     pg.draw.rect(self.screen, (42, 69, 98), rect, 1)
                 elif (x, y) in env.forge_floor:
@@ -107,6 +110,12 @@ class ArenaRenderer:
                            self.CELL - 12, self.CELL - 12)
             pg.draw.rect(self.screen, (71, 211, 255), rect, 3, border_radius=6)
             pg.draw.circle(self.screen, (190, 248, 255), rect.center, 4)
+        for position in env.time_anchors:
+            center = (position[0] * self.CELL + self.CELL // 2,
+                      position[1] * self.CELL + self.CELL // 2)
+            pg.draw.circle(self.screen, (230, 187, 255), center, 16, 3)
+            pg.draw.line(self.screen, (255, 226, 177), center,
+                         (center[0] + 6, center[1] - 7), 3)
         for position in env.pits:
             self._sprite(position, "pit")
         for position in env.spikes:
@@ -144,10 +153,13 @@ class ArenaRenderer:
                                  int(move[2]) + (int(move[4]) - int(move[2])) * eased)
             furnace = isinstance(env.boss, FurnaceHydra)
             storm = isinstance(env.boss, StormChoir)
-            self._sprite(boss_position, "boss_storm_choir" if storm else
+            chrono = isinstance(env.boss, ChronoMantis)
+            self._sprite(boss_position, "boss_chrono_mantis" if chrono else
+                         "boss_storm_choir" if storm else
                          "boss_furnace_hydra" if furnace else "boss_prism_warden")
             if "boss_shield_break" in events:
-                self._sprite(boss_position, "effect_boss_chain_lightning" if storm else
+                self._sprite(boss_position, "effect_boss_temporal_slash" if chrono else
+                             "effect_boss_chain_lightning" if storm else
                              "effect_boss_magma_wave" if furnace else "effect_boss_prism_burst")
             if any(event.startswith("boss_hit:") for event in events):
                 center = (round((boss_position[0] + .5) * self.CELL),
@@ -234,6 +246,14 @@ class ArenaRenderer:
                 x, y = (int(value) for value in event.split(":")[1:])
                 self._sprite((x, y), "effect_boss_chain_lightning")
                 continue
+            if event.startswith("chrono_slash:") or event.startswith("chrono_echo:"):
+                x, y = (int(value) for value in event.split(":")[1:])
+                self._sprite((x, y), "effect_boss_temporal_slash")
+                continue
+            if event.startswith("chrono_leap:"):
+                x, y = (int(value) for value in event.split(":")[1:])
+                self._sprite((x, y), "effect_boss_temporal_slash")
+                continue
             if not event.startswith("archer_shot:"):
                 continue
             parts = event.split(":")
@@ -251,7 +271,12 @@ class ArenaRenderer:
         left = self.map_width + 20
         self._text(f"第 {level} 关 · Jev Arena", left, 20, colors["text"])
         if env.boss:
-            if isinstance(env.boss, StormChoir):
+            if isinstance(env.boss, ChronoMantis):
+                phase = {"flank": "横切追击", "slash": "近斩锁定", "leap": "跃迁蓄力"}[env.boss.phase]
+                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                         f"{phase} · 倒计时 {env.boss.leap_countdown}" if env.boss.phase == "leap" else phase)
+                label, tint = "时序螳螂", (230, 182, 255)
+            elif isinstance(env.boss, StormChoir):
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          "接地柱 0/4" if env.boss.target is None else
                          f"雷链 {max(0, len(env.storm_chain()) - 2)}/4 柱")
@@ -334,7 +359,8 @@ class ArenaRenderer:
                      "effect_player_slash", "effect_enemy_claw", "boss_prism_warden",
                      "projectile_boss_prism", "effect_boss_prism_burst", "boss_furnace_hydra",
                      "projectile_boss_fireball", "effect_boss_magma_wave", "boss_storm_choir",
-                     "effect_boss_chain_lightning"):
+                     "effect_boss_chain_lightning", "boss_chrono_mantis",
+                     "effect_boss_temporal_slash"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -352,6 +378,8 @@ class ArenaRenderer:
                                            1.7 if name == "projectile_boss_fireball" else 2.1))
             elif name in ("boss_storm_choir", "effect_boss_chain_lightning"):
                 limit = round(self.CELL * (3.0 if name == "boss_storm_choir" else 1.6))
+            elif name in ("boss_chrono_mantis", "effect_boss_temporal_slash"):
+                limit = round(self.CELL * (3.0 if name == "boss_chrono_mantis" else 2.0))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -525,6 +553,36 @@ class ArenaRenderer:
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
     def _boss_telegraph(self, env: ArenaEnv) -> None:
+        if isinstance(env.boss, ChronoMantis):
+            boss = env.boss
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            if boss.phase == "slash" and boss.slash_target:
+                target = boss.slash_target
+                cells = [(target[0] + dx, target[1] + dy)
+                         for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))]
+                color = (255, 105, 138, 125)
+            elif boss.phase == "leap" and boss.leap_target:
+                target = boss.leap_target
+                cells = [target, (target[0], 11)]
+                color = (208, 130, 255, 125)
+            else:
+                return
+            for cell in cells:
+                if env.in_bounds(cell):
+                    self.pg.draw.rect(overlay, color,
+                                      (cell[0] * self.CELL + 2, cell[1] * self.CELL + 2,
+                                       self.CELL - 4, self.CELL - 4), border_radius=5)
+            if boss.phase == "leap":
+                if boss.slash_target:
+                    echo = boss.slash_target
+                    self.pg.draw.rect(overlay, (255, 105, 138, 115),
+                                      (echo[0] * self.CELL + 3, echo[1] * self.CELL + 3,
+                                       self.CELL - 6, self.CELL - 6), 3, border_radius=5)
+                start = ((boss.position[0] + .5) * self.CELL, (boss.position[1] + .5) * self.CELL)
+                end = ((target[0] + .5) * self.CELL, (target[1] + .5) * self.CELL)
+                self.pg.draw.line(overlay, (243, 191, 255, 225), start, end, 4)
+            self.screen.blit(overlay, (0, 0))
+            return
         if isinstance(env.boss, StormChoir):
             boss = env.boss
             if boss.target is None:
@@ -670,6 +728,14 @@ class ArenaRenderer:
             elif event.startswith("storm_chain:"): labels.append("连锁闪电穿过接地柱！")
             elif event.startswith("storm_surge:"): labels.append("高压雷爆！")
             elif event == "storm_grounded": labels.append("四柱接地回灌：核心开放！")
+            elif event.startswith("chrono_slash_aim:"): labels.append("时序近斩预警：离开红色范围！")
+            elif event.startswith("chrono_slash:"): labels.append("时序螳螂近斩！")
+            elif event.startswith("chrono_leap_aim:"): labels.append("跃迁落点已锁定：去对应时间锚！")
+            elif event.startswith("chrono_leap_charge:"): labels.append("跃迁蓄力：落点不再改变！")
+            elif event.startswith("chrono_leap:"): labels.append("时序螳螂跃迁！")
+            elif event == "chrono_leap_cancel": labels.append("落点被占据：跃迁取消！")
+            elif event == "chrono_anchor": labels.append("时间锚已启动！")
+            elif event == "chrono_echo_replay": labels.append("残影回放击中 Boss！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")

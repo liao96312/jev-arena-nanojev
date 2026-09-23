@@ -217,5 +217,88 @@ class StormBossTests(unittest.TestCase):
         self.assertIn("boss_defeated", events)
 
 
+class ChronoBossTests(unittest.TestCase):
+    def test_room_leap_warning_and_anchor_counter(self):
+        env = ArenaEnv(campaign_config(40))
+        self.assertEqual(env.time_anchors, {(9, 11), (14, 11)})
+        self.assertTrue((env.time_anchors | env.medkits | env.energy_cells) <= env._reachable_cells())
+        self.assertIn("Boss chrono", encode_state(env))
+        env.round = 3
+        env.player.position = (9, 11)
+        env.step(Action.WAIT)
+        flank = env.step(Action.WAIT)
+        self.assertIn("boss_move:10:7:12:7", flank.events)
+        self.assertEqual(env.boss.slash_target, (9, 11))
+        self.assertIn(("chrono_mantis/slash", 24), env.imminent_threats())
+        env.step(Action.MOVE_S)
+        slash = env.step(Action.MOVE_S)
+        self.assertIn("chrono_leap_aim:9:7", slash.events)
+        self.assertEqual(env.boss.leap_countdown, 2)
+        self.assertEqual(env.boss.position, (12, 7))
+        self.assertEqual(env._distance(env.boss.position, env.boss.leap_target), 3)
+        env.step(Action.DASH_N)
+        env.step(Action.WAIT)
+        self.assertEqual(env.boss.position, (12, 7))
+        env.step(Action.WAIT)
+        leap = env.step(Action.WAIT)
+        self.assertIn("chrono_anchor", leap.events)
+        self.assertIn("boss_shield_break", leap.events)
+        self.assertEqual(env.boss.position, (9, 7))
+        self.assertEqual(env.player.hp, 100)
+
+    def test_occupied_leap_landing_is_cancelled_not_retargeted(self):
+        env = ArenaEnv(campaign_config(40))
+        env.round = 3
+        env.player.position = (9, 7)
+        env.boss.position = (12, 7)
+        env.boss.phase = "leap"
+        env.boss.leap_target = (9, 7)
+        env.boss.leap_countdown = 1
+        env.boss.slash_target = (10, 11)
+        env.step(Action.WAIT)
+        result = env.step(Action.WAIT)
+        self.assertIn("chrono_leap_cancel", result.events)
+        self.assertEqual(env.boss.position, (12, 7))
+        self.assertEqual(env.player.hp, 100)
+
+    def test_slash_and_delayed_echo_match_warning(self):
+        env = ArenaEnv(campaign_config(40))
+        env.round = 3
+        env.boss.phase = "slash"
+        env.boss.slash_target = env.player.position
+        self.assertIn(("chrono_mantis/slash", 24), env.imminent_threats())
+        env.step(Action.WAIT)
+        slash = env.step(Action.WAIT)
+        self.assertIn("damage:chrono_slash:24", slash.events)
+        self.assertIn(("chrono_mantis/echo", 18), env.imminent_threats())
+        for _ in range(4):
+            echo = env.step(Action.WAIT)
+        self.assertIn("damage:chrono_echo:18", echo.events)
+        self.assertEqual(env.player.hp, 58)
+
+    def test_default_hybrid_policy_finishes_mantis_without_damage(self):
+        env = ArenaEnv(campaign_config(40))
+        events = []
+        for _ in range(100):
+            if env.done:
+                break
+            scores = {action.value: 1.0 for action in env.legal_actions()}
+            choice, _ = select_action(scores, env, "hybrid")
+            events.extend(env.step(choice).events)
+        self.assertTrue(env.done)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(events.count("chrono_anchor"), 2)
+        self.assertIn("boss_defeated", events)
+
+    def test_rule_agent_can_finish_mantis_without_damage(self):
+        env, agent = ArenaEnv(campaign_config(40)), RuleAgent()
+        for _ in range(100):
+            if env.done:
+                break
+            env.step(agent.act(env))
+        self.assertTrue(env.done)
+        self.assertEqual(env.player.hp, 100)
+
+
 if __name__ == "__main__":
     unittest.main()

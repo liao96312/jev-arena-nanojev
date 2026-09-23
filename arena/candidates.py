@@ -1,6 +1,6 @@
 from .entities import Action
 from .env import ArenaEnv
-from .boss import FurnaceHydra, PrismWarden, StormChoir
+from .boss import ChronoMantis, FurnaceHydra, PrismWarden, StormChoir
 
 
 def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
@@ -141,11 +141,12 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                 damage = env.config.bow_damage if weapon == "bow" else env.config.pistol_damage
                 kind = ("prism_warden" if isinstance(enemy, PrismWarden) else
                         "furnace_hydra" if isinstance(enemy, FurnaceHydra) else
-                        "storm_choir" if isinstance(enemy, StormChoir) else enemy.enemy_type.value)
-                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir))
+                        "storm_choir" if isinstance(enemy, StormChoir) else
+                        "chrono_mantis" if isinstance(enemy, ChronoMantis) else enemy.enemy_type.value)
+                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis))
                              or enemy.exposed_rounds else enemy.hp)
                 description += f"; {kind}/{distance} hp {enemy.hp}->{remaining}"
-                if weapon == "bow" and not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir)) and enemy.hp > damage:
+                if weapon == "bow" and not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis)) and enemy.hp > damage:
                     description += "; push=1"
         consequence = _immediate_consequence(env, action)
         candidates[action.value] = description + ("; immediate: " + consequence if consequence else "")
