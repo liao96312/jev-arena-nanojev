@@ -218,6 +218,31 @@ class StormBossTests(unittest.TestCase):
 
 
 class ChronoBossTests(unittest.TestCase):
+    def test_flank_changes_side_with_player_without_teleporting(self):
+        right = ArenaEnv(campaign_config(40))
+        right.round = 3
+        right.player.position = (14, 11)
+        right.step(Action.WAIT)
+        right.step(Action.WAIT)
+        self.assertEqual(right.boss.position, (11, 7))
+        self.assertEqual(right.boss.phase, "slash")
+        right.step(Action.WAIT)
+        right.step(Action.WAIT)
+        self.assertEqual(right.boss.leap_target, (14, 7))
+
+        left = ArenaEnv(campaign_config(40))
+        left.round = 3
+        left.player.position = (6, 11)
+        left.boss.position = (9, 7)
+        left.step(Action.WAIT)
+        left.step(Action.WAIT)
+        self.assertEqual(left.boss.position, (11, 7))
+        self.assertEqual(left.boss.phase, "flank")
+        left.step(Action.WAIT)
+        left.step(Action.WAIT)
+        self.assertEqual(left.boss.position, (12, 7))
+        self.assertEqual(left.boss.phase, "slash")
+
     def test_room_leap_warning_and_anchor_counter(self):
         env = ArenaEnv(campaign_config(40))
         self.assertEqual(env.time_anchors, {(9, 11), (14, 11)})
@@ -238,7 +263,8 @@ class ChronoBossTests(unittest.TestCase):
         self.assertEqual(env._distance(env.boss.position, env.boss.leap_target), 3)
         env.step(Action.DASH_N)
         env.step(Action.WAIT)
-        self.assertEqual(env.boss.position, (12, 7))
+        self.assertEqual(env.boss.position, (12, 8))
+        self.assertEqual(env._distance(env.boss.position, env.boss.leap_target), 4)
         env.step(Action.WAIT)
         leap = env.step(Action.WAIT)
         self.assertIn("chrono_anchor", leap.events)

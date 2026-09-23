@@ -334,6 +334,21 @@ class ArenaEnv:
             remaining.remove(nearest)
         return tuple(nodes)
 
+    def chrono_landing_x(self) -> int:
+        boss = self.boss
+        if not isinstance(boss, ChronoMantis):
+            raise ValueError("chrono landing requires ChronoMantis")
+        if boss.leap_target:
+            return boss.leap_target[0]
+        if boss.phase == "slash":
+            return 9 if boss.position[0] >= 12 else 14
+        player_x = self.player.position[0]
+        if player_x <= 7:
+            return 9
+        if player_x >= 13:
+            return 14
+        return 9 if boss.position[0] >= 10 else 14
+
     def _ensure_pickups_reachable(self) -> None:
         reachable = self._reachable_cells()
         pickup_sets = (self.bow_pickups, self.pistol_pickups, self.arrow_bundles, self.energy_cells)
@@ -784,12 +799,20 @@ class ArenaEnv:
             return 0.0
         if boss.phase == "flank":
             previous = boss.position
-            x = 12 if boss.position[0] >= 12 else boss.position[0] + 2
-            boss.position = (x, 7)
+            launch_x = 12 if self.chrono_landing_x() == 9 else 11
+            delta = max(-2, min(2, launch_x - boss.position[0]))
+            x = boss.position[0] + delta
+            y = (8 if boss.position[1] == 7 else 7) if not delta else boss.position[1]
+            if (x, y) == self.player.position:
+                y = 8 if y == 7 else 7
+            boss.position = (x, y)
             boss.moves += 1
+            if x != launch_x:
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{x}:{y}")
+                return 0.0
             boss.slash_target = self.player.position
             boss.phase = "slash"
-            events.extend((f"boss_move:{previous[0]}:{previous[1]}:{x}:7",
+            events.extend((f"boss_move:{previous[0]}:{previous[1]}:{x}:{y}",
                            f"chrono_slash_aim:{boss.slash_target[0]}:{boss.slash_target[1]}"))
             return 0.0
         if boss.phase == "slash":
@@ -798,13 +821,17 @@ class ArenaEnv:
             events.append(f"chrono_slash:{target[0]}:{target[1]}")
             if self._distance(self.player.position, target) <= 1:
                 reward += self._damage_entity(self.player, boss.slash_damage, events, "chrono_slash")
-            boss.leap_target = (9 if boss.position[0] >= 12 else 14, 7)
+            boss.leap_target = (self.chrono_landing_x(), 7)
             boss.leap_countdown = 2
             boss.phase = "leap"
             events.append(f"chrono_leap_aim:{boss.leap_target[0]}:{boss.leap_target[1]}")
             return reward
         if boss.leap_countdown > 1:
             boss.leap_countdown -= 1
+            previous = boss.position
+            boss.position = (boss.position[0], 8)
+            if previous != boss.position:
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:8")
             events.append(f"chrono_leap_charge:{boss.leap_target[0]}:{boss.leap_target[1]}")
             return 0.0
         if self.player.position == boss.leap_target:

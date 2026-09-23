@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-116%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-117%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -67,7 +67,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 
 ![第 40 关时序螳螂](assets/screenshots/boss_chrono_mantis.png)
 
-默认 NanoJev 混合策略会在锁定近斩时闪避、去对应时间锚诱导 Boss 跃迁并破盾。第 10、20、30、40 关均以击败 Boss 通关；第 50～100 关 Boss 仍是[设计规划](JEV_ARENA_BOSS_ROADMAP.md)。
+默认 NanoJev 混合策略会在锁定近斩时闪避、去对应时间锚诱导 Boss 跃迁并破盾。螳螂现会按玩家横向位置改换起跳侧翼，蓄力时再向前压近 1 格，但不会临时改变预告落点。第 10、20、30、40 关均以击败 Boss 通关；第 50～100 关 Boss 仍是[设计规划](JEV_ARENA_BOSS_ROADMAP.md)。
 
 ### 难度不是简单堆怪
 
@@ -180,7 +180,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **116 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **117 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

@@ -138,7 +138,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
                     (boss.target is None and boss.attacks % 2 == 0)):
                 return "wait", "boss_tactics"
         else:
-            landing_x = boss.leap_target[0] if boss.leap_target else (9 if boss.position[0] >= 10 else 14)
+            landing_x = env.chrono_landing_x()
             targets = {(landing_x, 11)}
             if env.player.position in targets and "wait" in safest and boss.phase != "slash":
                 return "wait", "boss_tactics"
