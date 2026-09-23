@@ -32,6 +32,19 @@ class FurnaceHydra:
     wave_damage: int = 22
     fireball_damage: int = 16
 
+
+@dataclass
+class StormChoir:
+    position: tuple[int, int] = (10, 5)
+    hp: int = 84
+    max_hp: int = 84
+    exposed_rounds: int = 0
+    target: tuple[int, int] | None = None
+    attack_kind: str = "chain"
+    attacks: int = 0
+    arc_damage: int = 14
+    surge_damage: int = 26
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start

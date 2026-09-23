@@ -5,7 +5,7 @@ from pathlib import Path
 
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
-from arena.boss import FurnaceHydra
+from arena.boss import FurnaceHydra, StormChoir
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
@@ -68,7 +68,10 @@ class ArenaRenderer:
         for y in range(env.config.height):
             for x in range(env.config.width):
                 rect = pg.Rect(x * self.CELL, y * self.CELL, self.CELL, self.CELL)
-                if (x, y) in env.forge_floor:
+                if env.grounding_pylons:
+                    pg.draw.rect(self.screen, (19, 31, 54) if (x + y) % 2 else (23, 37, 62), rect)
+                    pg.draw.rect(self.screen, (42, 69, 98), rect, 1)
+                elif (x, y) in env.forge_floor:
                     pg.draw.rect(self.screen, (35, 24, 25) if (x + y) % 2 else (40, 27, 27), rect)
                     pg.draw.rect(self.screen, (69, 44, 42), rect, 1)
                 else:
@@ -92,6 +95,18 @@ class ArenaRenderer:
             pg.draw.circle(self.screen, (180, 245, 255), center, 7, 2)
             pg.draw.line(self.screen, (165, 241, 255), (center[0] - 8, center[1]),
                          (center[0] + 8, center[1]), 2)
+        for position in env.grounding_pylons:
+            center = (position[0] * self.CELL + self.CELL // 2,
+                      position[1] * self.CELL + self.CELL // 2)
+            pg.draw.circle(self.screen, (88, 192, 255), center, 17, 3)
+            pg.draw.polygon(self.screen, (173, 237, 255),
+                            [(center[0], center[1] - 12), (center[0] + 10, center[1] + 8),
+                             (center[0] - 10, center[1] + 8)], 2)
+        for position in env.relay_pads:
+            rect = pg.Rect(position[0] * self.CELL + 6, position[1] * self.CELL + 6,
+                           self.CELL - 12, self.CELL - 12)
+            pg.draw.rect(self.screen, (71, 211, 255), rect, 3, border_radius=6)
+            pg.draw.circle(self.screen, (190, 248, 255), rect.center, 4)
         for position in env.pits:
             self._sprite(position, "pit")
         for position in env.spikes:
@@ -128,9 +143,12 @@ class ArenaRenderer:
                 boss_position = (int(move[1]) + (int(move[3]) - int(move[1])) * eased,
                                  int(move[2]) + (int(move[4]) - int(move[2])) * eased)
             furnace = isinstance(env.boss, FurnaceHydra)
-            self._sprite(boss_position, "boss_furnace_hydra" if furnace else "boss_prism_warden")
+            storm = isinstance(env.boss, StormChoir)
+            self._sprite(boss_position, "boss_storm_choir" if storm else
+                         "boss_furnace_hydra" if furnace else "boss_prism_warden")
             if "boss_shield_break" in events:
-                self._sprite(boss_position, "effect_boss_magma_wave" if furnace else "effect_boss_prism_burst")
+                self._sprite(boss_position, "effect_boss_chain_lightning" if storm else
+                             "effect_boss_magma_wave" if furnace else "effect_boss_prism_burst")
             if any(event.startswith("boss_hit:") for event in events):
                 center = (round((boss_position[0] + .5) * self.CELL),
                           round((boss_position[1] + .5) * self.CELL))
@@ -196,6 +214,26 @@ class ArenaRenderer:
                     if progress >= (y - 8) / 13:
                         self._sprite((x, y), "effect_boss_magma_wave")
                 continue
+            if event.startswith("storm_chain:"):
+                values = [int(value) for value in event.split(":")[1:]]
+                nodes = list(zip(values[::2], values[1::2]))
+                for index, (start, end) in enumerate(zip(nodes, nodes[1:])):
+                    local = progress * (len(nodes) - 1) - index
+                    if local <= 0:
+                        break
+                    finish = (start[0] + (end[0] - start[0]) * min(1, local),
+                              start[1] + (end[1] - start[1]) * min(1, local))
+                    a = (round((start[0] + .5) * self.CELL), round((start[1] + .5) * self.CELL))
+                    b = (round((finish[0] + .5) * self.CELL), round((finish[1] + .5) * self.CELL))
+                    pg.draw.line(self.screen, (55, 158, 255), a, b, 11)
+                    pg.draw.line(self.screen, (218, 250, 255), a, b, 4)
+                    if 0 < local < 1:
+                        self._sprite(finish, "effect_boss_chain_lightning")
+                continue
+            if event.startswith("storm_surge:"):
+                x, y = (int(value) for value in event.split(":")[1:])
+                self._sprite((x, y), "effect_boss_chain_lightning")
+                continue
             if not event.startswith("archer_shot:"):
                 continue
             parts = event.split(":")
@@ -213,7 +251,12 @@ class ArenaRenderer:
         left = self.map_width + 20
         self._text(f"第 {level} 关 · Jev Arena", left, 20, colors["text"])
         if env.boss:
-            if isinstance(env.boss, FurnaceHydra):
+            if isinstance(env.boss, StormChoir):
+                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                         "接地柱 0/4" if env.boss.target is None else
+                         f"雷链 {max(0, len(env.storm_chain()) - 2)}/4 柱")
+                label, tint = "风暴合唱环", (132, 211, 255)
+            elif isinstance(env.boss, FurnaceHydra):
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          f"冷却阀 {len(env.boss.valves_opened)}/3")
                 label, tint = "熔炉三头机", (255, 171, 104)
@@ -290,7 +333,8 @@ class ArenaRenderer:
                      "projectile_enemy_laser", "projectile_player_pulse", "projectile_player_arrow",
                      "effect_player_slash", "effect_enemy_claw", "boss_prism_warden",
                      "projectile_boss_prism", "effect_boss_prism_burst", "boss_furnace_hydra",
-                     "projectile_boss_fireball", "effect_boss_magma_wave"):
+                     "projectile_boss_fireball", "effect_boss_magma_wave", "boss_storm_choir",
+                     "effect_boss_chain_lightning"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -306,6 +350,8 @@ class ArenaRenderer:
             elif name in ("boss_furnace_hydra", "projectile_boss_fireball", "effect_boss_magma_wave"):
                 limit = round(self.CELL * (3.2 if name == "boss_furnace_hydra" else
                                            1.7 if name == "projectile_boss_fireball" else 2.1))
+            elif name in ("boss_storm_choir", "effect_boss_chain_lightning"):
+                limit = round(self.CELL * (3.0 if name == "boss_storm_choir" else 1.6))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -479,6 +525,25 @@ class ArenaRenderer:
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
     def _boss_telegraph(self, env: ArenaEnv) -> None:
+        if isinstance(env.boss, StormChoir):
+            boss = env.boss
+            if boss.target is None:
+                return
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            nodes = env.storm_chain() if boss.attack_kind == "chain" else (boss.position, boss.target)
+            for start, end in zip(nodes, nodes[1:]):
+                a = (start[0] * self.CELL + self.CELL // 2, start[1] * self.CELL + self.CELL // 2)
+                b = (end[0] * self.CELL + self.CELL // 2, end[1] * self.CELL + self.CELL // 2)
+                self.pg.draw.line(overlay, (75, 173, 255, 55), a, b, 14)
+                self.pg.draw.line(overlay, (157, 222, 255, 210), a, b, 3)
+            target = boss.target
+            safe = boss.attack_kind == "chain" and target in env.relay_pads and len(nodes) == 6
+            center = (target[0] * self.CELL + self.CELL // 2,
+                      target[1] * self.CELL + self.CELL // 2)
+            self.pg.draw.circle(overlay, (86, 235, 255, 220) if safe else (255, 105, 72, 225),
+                                center, 17 if boss.attack_kind == "chain" else 28, 3)
+            self.screen.blit(overlay, (0, 0))
+            return
         if isinstance(env.boss, FurnaceHydra):
             boss = env.boss
             if boss.target is None:
@@ -600,6 +665,11 @@ class ArenaRenderer:
             elif event.startswith("furnace_wave:"): labels.append("熔岩波来袭！")
             elif event.startswith("furnace_fireball:"): labels.append("熔炉火球发射！")
             elif event.startswith("furnace_valve:"): labels.append("冷却阀反制成功！")
+            elif event.startswith("storm_aim:chain:"): labels.append("连锁雷网预警：站在蓝色导电位接地！")
+            elif event.startswith("storm_aim:surge:"): labels.append("高压雷爆锁定：离开目标周围！")
+            elif event.startswith("storm_chain:"): labels.append("连锁闪电穿过接地柱！")
+            elif event.startswith("storm_surge:"): labels.append("高压雷爆！")
+            elif event == "storm_grounded": labels.append("四柱接地回灌：核心开放！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")

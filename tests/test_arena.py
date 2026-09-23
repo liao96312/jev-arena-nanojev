@@ -402,7 +402,7 @@ class ArenaTests(unittest.TestCase):
             12: [1, 2, 4, 4],
             18: [1, 2, 3, 4],
             24: [1, 1, 3, 3],
-            30: [1, 1, 2, 3],
+            31: [1, 1, 2, 3],
         }
         types = (EnemyType.CHASER, EnemyType.CHARGER, EnemyType.ARCHER, EnemyType.BOMBER)
         for level, intervals in expected.items():

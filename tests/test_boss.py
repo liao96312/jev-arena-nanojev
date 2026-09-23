@@ -171,5 +171,51 @@ class PrismBossTests(unittest.TestCase):
         self.assertIn("boss_defeated", events)
 
 
+class StormBossTests(unittest.TestCase):
+    def test_staggered_room_chain_warning_and_grounding(self):
+        env = ArenaEnv(campaign_config(30))
+        self.assertFalse(env.gems)
+        self.assertEqual(env.player.position, (10, 16))
+        self.assertEqual(env.grounding_pylons, {(8, 9), (12, 9), (11, 13), (7, 13)})
+        self.assertEqual(env.relay_pads, {(8, 8), (10, 8), (12, 8)})
+        self.assertTrue((env.relay_pads | env.grounding_pylons | env.medkits) <= env._reachable_cells())
+        env.round = 3
+        env.player.position = (10, 8)
+        env.boss.target = env.player.position
+        self.assertEqual(len(env.storm_chain()), 6)
+        self.assertIn("Boss storm", encode_state(env))
+        self.assertIn("storm_choir", build_candidates(env)[Action.SHOOT_PISTOL_N.value])
+        self.assertFalse(env.imminent_threats())
+        env.step(Action.WAIT)
+        result = env.step(Action.WAIT)
+        self.assertIn("storm_grounded", result.events)
+        self.assertIn("boss_shield_break", result.events)
+        self.assertEqual(env.player.hp, 100)
+
+    def test_surge_damage_matches_warning(self):
+        env = ArenaEnv(campaign_config(30))
+        env.round = 3
+        env.boss.attack_kind = "surge"
+        env.boss.target = env.player.position
+        self.assertIn(("storm_choir/surge", 26), env.imminent_threats())
+        env.step(Action.WAIT)
+        hit = env.step(Action.WAIT)
+        self.assertIn("damage:storm_surge:26", hit.events)
+
+    def test_default_hybrid_policy_finishes_storm_without_damage(self):
+        env = ArenaEnv(campaign_config(30))
+        events = []
+        for _ in range(100):
+            if env.done:
+                break
+            scores = {action.value: 1.0 for action in env.legal_actions()}
+            choice, _ = select_action(scores, env, "hybrid")
+            events.extend(env.step(choice).events)
+        self.assertTrue(env.done)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(events.count("storm_grounded"), 2)
+        self.assertIn("boss_defeated", events)
+
+
 if __name__ == "__main__":
     unittest.main()

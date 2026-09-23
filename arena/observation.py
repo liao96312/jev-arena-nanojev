@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .env import ArenaEnv
-from .boss import FurnaceHydra
+from .boss import FurnaceHydra, StormChoir
 
 
 ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
@@ -78,6 +78,11 @@ def encode_state(env: ArenaEnv) -> str:
                 f"attack={env.boss.attack_kind} aim={env.boss.target or 'none'} "
                 f"dmg=wave{env.boss.wave_damage}/fireball{env.boss.fireball_damage} "
                 f"coolant={sorted(env.coolant_valves)}.")
+    elif isinstance(env.boss, StormChoir):
+        boss = (f" Boss storm@{env.boss.position} hp={env.boss.hp} exposed={env.boss.exposed_rounds} "
+                f"{env.boss.attack_kind} aim={env.boss.target or '-'} "
+                f"links={max(0, len(env.storm_chain()) - 2)}/4 "
+                f"relay=8,8|10,8|12,8 arc{env.boss.arc_damage}/surge{env.boss.surge_damage}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, ENEMY_SPEED_LEVEL, Action,
                        Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout)
-from .boss import FurnaceHydra, PrismWarden, ray_cells
+from .boss import FurnaceHydra, PrismWarden, StormChoir, ray_cells
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class ArenaConfig:
 def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
-    if level in (10, 20):
+    if level in (10, 20, 30):
         return ArenaConfig(difficulty_level=level, max_ticks=300, walls=0, enemies=0, gems=0,
                            fires=0, spikes=0, pits=0, barrels=0, medkits=0,
                            enemy_hp_bonus=level - 1, action_points=2, spawn_protection_rounds=2,
@@ -141,13 +141,16 @@ class ArenaEnv:
         raise RuntimeError("could not generate a playable map after 20 attempts")
 
     def _generate_map(self) -> None:
-        self.boss: PrismWarden | FurnaceHydra | None = None
+        self.boss: PrismWarden | FurnaceHydra | StormChoir | None = None
         self.reflectors: set[tuple[int, int]] = set()
         self.coolant_valves: set[tuple[int, int]] = set()
+        self.grounding_pylons: set[tuple[int, int]] = set()
+        self.relay_pads: set[tuple[int, int]] = set()
         self.forge_floor: set[tuple[int, int]] = set()
-        if self.config.difficulty_level in (10, 20) and self.config.finish_on_all_gems:
+        if self.config.difficulty_level in (10, 20, 30) and self.config.finish_on_all_gems:
             furnace = self.config.difficulty_level == 20
-            self.player = Player((10, 16 if furnace else 15), loadout=self.loadout)
+            storm = self.config.difficulty_level == 30
+            self.player = Player((10, 16 if furnace or storm else 15), loadout=self.loadout)
             if furnace:
                 self.player.loadout.bow = True
                 self.player.loadout.arrows = max(10, self.player.loadout.arrows)
@@ -156,6 +159,14 @@ class ArenaEnv:
                                        2 if y in (2, 3, 16, 17) else 0,
                                        16 if y in (0, 1, 18, 19) else
                                        18 if y in (2, 3, 16, 17) else 20)}
+            elif storm:
+                self.player.loadout.pistol = True
+                self.player.loadout.energy = max(12, self.player.loadout.energy)
+                room = {(x, y) for y in range(20)
+                        for x in range(3 if y in (0, 1, 18, 19) else
+                                       1 if y in (2, 3, 16, 17) else 0,
+                                       17 if y in (0, 1, 18, 19) else
+                                       19 if y in (2, 3, 16, 17) else 20)}
             else:
                 self.player.loadout.pistol = True
                 self.player.loadout.energy = max(12, self.player.loadout.energy)
@@ -173,7 +184,7 @@ class ArenaEnv:
                 self.arrow_bundles = set()
                 self.reflectors = {(9, 12), (11, 12), (8, 13), (12, 13)}
                 self.boss = PrismWarden()
-            else:
+            elif furnace:
                 self.walls |= {(5, 8), (14, 8), (5, 9), (14, 9),
                                (8, 10), (12, 10), (6, 14), (14, 14)}
                 self.forge_floor = room - self.walls
@@ -183,6 +194,16 @@ class ArenaEnv:
                 self.arrow_bundles = {(6, 16), (14, 16)}
                 self.coolant_valves = {(x, 12) for x in (7, 10, 13)}
                 self.boss = FurnaceHydra()
+            else:
+                self.walls |= {(5, 7), (14, 7), (5, 11), (14, 11),
+                               (4, 14), (15, 14), (6, 16), (13, 16)}
+                self.pits = {(3, 9), (16, 9), (4, 16), (15, 16)}
+                self.medkits, self.energy_cells = {(5, 15), (14, 15)}, {(7, 15), (13, 15)}
+                self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
+                self.arrow_bundles = set()
+                self.grounding_pylons = {(8, 9), (12, 9), (11, 13), (7, 13)}
+                self.relay_pads = {(8, 8), (10, 8), (12, 8)}
+                self.boss = StormChoir()
             return
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
@@ -270,7 +291,7 @@ class ArenaEnv:
     def enemy_at(self, position: tuple[int, int]) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
-    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | None:
+    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | None:
         return self.boss if self.boss and self.boss.position == position else None
 
     def boss_ray(self) -> tuple[tuple[int, int], ...]:
@@ -288,6 +309,19 @@ class ArenaEnv:
         return {(x, y) for y in range(14, 17) for x in range(4, 16)
                 if (x, y) not in self.walls | self.fires | self.spikes | self.pits and
                 any(cell in unused for cell in ray_cells(self.boss.position, (x, y)))}
+
+    def storm_chain(self) -> tuple[tuple[int, int], ...]:
+        if not isinstance(self.boss, StormChoir) or self.boss.target is None:
+            return ()
+        nodes = [self.boss.position, self.boss.target]
+        remaining = set(self.grounding_pylons)
+        while remaining:
+            nearest = min(remaining, key=lambda cell: (self._distance(nodes[-1], cell), cell))
+            if self._distance(nodes[-1], nearest) > 5:
+                break
+            nodes.append(nearest)
+            remaining.remove(nearest)
+        return tuple(nodes)
 
     def _ensure_pickups_reachable(self) -> None:
         reachable = self._reachable_cells()
@@ -479,7 +513,7 @@ class ArenaEnv:
             events.append("pickup_energy")
         return reward
 
-    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra,
+    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir,
                        amount: int, events: list[str], source: str) -> float:
         if entity is self.player and self.player.invulnerable:
             events.append(f"invulnerable:{source}")
@@ -516,7 +550,7 @@ class ArenaEnv:
         return 20.0 if source in ("attack", "bow", "pistol") else 10.0
 
     def _ray_target(self, origin: tuple[int, int], direction: str,
-                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra, int] | None:
+                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir, int] | None:
         target = origin
         for distance in range(1, range_ + 1):
             target = self.add(target, direction)
@@ -574,6 +608,8 @@ class ArenaEnv:
             return 0.0
         if isinstance(boss, FurnaceHydra):
             return self._resolve_furnace(boss, events)
+        if isinstance(boss, StormChoir):
+            return self._resolve_storm(boss, events)
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if not boss.exposed_rounds:
@@ -687,6 +723,43 @@ class ArenaEnv:
             boss.position = ((9, 10, 11)[boss.attacks % 3], 7)
             if previous != boss.position:
                 events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:7")
+        return reward
+
+    def _resolve_storm(self, boss: StormChoir, events: list[str]) -> float:
+        if boss.exposed_rounds:
+            boss.exposed_rounds -= 1
+            if not boss.exposed_rounds:
+                events.append("boss_shield_restored")
+            return 0.0
+        if boss.target is None:
+            boss.attack_kind = "chain" if boss.attacks % 2 == 0 else "surge"
+            boss.target = self.player.position
+            events.append(f"storm_aim:{boss.attack_kind}:{boss.target[0]}:{boss.target[1]}")
+            return 0.0
+        reward = 0.0
+        if boss.attack_kind == "chain":
+            chain = self.storm_chain()
+            events.append("storm_chain:" + ":".join(f"{x}:{y}" for x, y in chain))
+            grounded = (boss.target in self.relay_pads and self.player.position == boss.target and
+                        len(chain) == 6)
+            if grounded:
+                boss.exposed_rounds = 4
+                events.append("storm_grounded")
+                events.append("boss_shield_break")
+                reward += 15
+            elif self.player.position == boss.target or self.player.position in chain[2:]:
+                reward += self._damage_entity(self.player, boss.arc_damage, events, "storm_arc")
+        else:
+            events.append(f"storm_surge:{boss.target[0]}:{boss.target[1]}")
+            if self._distance(self.player.position, boss.target) <= 1:
+                reward += self._damage_entity(self.player, boss.surge_damage, events, "storm_surge")
+        boss.attacks += 1
+        boss.target = None
+        if not boss.exposed_rounds:
+            previous = boss.position
+            boss.position = ((10, 11, 9)[boss.attacks % 3], 5)
+            if previous != boss.position:
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:5")
         return reward
 
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
@@ -947,6 +1020,14 @@ class ArenaEnv:
                     threats.append(("furnace_hydra/wave", self.boss.wave_damage))
             elif self.boss.attack_kind == "fireball" and self._distance(position, self.boss.target) <= 1:
                 threats.append(("furnace_hydra/fireball", self.boss.fireball_damage))
+        if isinstance(self.boss, StormChoir) and self.boss.target:
+            if self.boss.attack_kind == "chain":
+                chain = self.storm_chain()
+                if ((position == self.boss.target or position in chain[2:]) and
+                        not (position == self.boss.target and position in self.relay_pads and len(chain) == 6)):
+                    threats.append(("storm_choir/arc", self.boss.arc_damage))
+            elif self._distance(position, self.boss.target) <= 1:
+                threats.append(("storm_choir/surge", self.boss.surge_damage))
         for enemy in self.enemies:
             intent = enemy.intent
             if not intent or intent.countdown > 1:
@@ -1005,9 +1086,13 @@ class ArenaEnv:
                       self.boss.returning) if isinstance(self.boss, PrismWarden) else
                      ("furnace", self.boss.position, self.boss.hp, tuple(sorted(self.boss.valves_opened)),
                       self.boss.exposed_rounds, self.boss.attack_kind, self.boss.target,
-                      self.boss.attacks) if self.boss else None),
+                      self.boss.attacks) if isinstance(self.boss, FurnaceHydra) else
+                     ("storm", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
+                      self.boss.attack_kind, self.boss.target, self.boss.attacks) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
             "coolant_valves": tuple(sorted(self.coolant_valves)),
+            "grounding_pylons": tuple(sorted(self.grounding_pylons)),
+            "relay_pads": tuple(sorted(self.relay_pads)),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,
                                     enemy.intent.kind.value if enemy.intent else None,
                                     enemy.intent.direction if enemy.intent else None,
