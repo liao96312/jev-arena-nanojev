@@ -1789,9 +1789,9 @@ NanoJev 很快，但能力有限。
 - [x] Pit
 - [x] Spike
 - [x] Beam Search
-- [ ] Search teacher dataset
+- [x] Search teacher dataset（Beam 10k，含校验和 token 审计）
 - [x] MCTS
-- [ ] Search distillation
+- [x] Search distillation（head-only 500 steps；4×100 同种子烟测，纯模型仍未独立通关）
 
 ## P3 — 暂缓
 

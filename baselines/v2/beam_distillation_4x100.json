@@ -1,0 +1,58 @@
+{
+  "date": "2026-09-23",
+  "campaign_level": 3,
+  "seeds": [0, 1, 2, 3],
+  "max_ticks": 100,
+  "max_batch_states": 2,
+  "teacher_dataset": "datasets/generated/arena_v2_beam_10k.jsonl",
+  "teacher_dataset_sha256": "85cd5d4991777792b0833989829d0d37e5b4dcaf3eef2fa140e1bfd85aba9166",
+  "student_checkpoint": "runs/arena_v2_beam_10k_head_500step",
+  "reference_checkpoint": "runs/arena_v2_ap_smoke_head_50step",
+  "training": {
+    "steps": 500,
+    "seconds": 4435.797,
+    "peak_gpu_gb": 2.530,
+    "initial_dev_ce": 2.331862,
+    "best_dev_ce": 1.847544,
+    "calibrated_test_ce": 1.933838
+  },
+  "reference_model": {
+    "mean_reward": 14.35,
+    "mean_ticks": 100,
+    "gems": 0,
+    "kills": 1,
+    "wins": 0,
+    "deaths": 0,
+    "two_step_backtracks": 277
+  },
+  "student_model": {
+    "mean_reward": 71.525,
+    "mean_ticks": 100,
+    "gems": 5,
+    "kills": 9,
+    "wins": 0,
+    "deaths": 0,
+    "two_step_backtracks": 262
+  },
+  "reference_hybrid": {
+    "mean_reward": 98.7875,
+    "mean_ticks": 60.75,
+    "gems": 16,
+    "kills": 6,
+    "wins": 4,
+    "deaths": 0,
+    "two_step_backtracks": 18,
+    "selector_interventions": 192
+  },
+  "student_hybrid": {
+    "mean_reward": 106.1,
+    "mean_ticks": 57,
+    "gems": 16,
+    "kills": 8,
+    "wins": 4,
+    "deaths": 0,
+    "two_step_backtracks": 20,
+    "selector_interventions": 133
+  },
+  "note": "Paired four-seed smoke benchmark under the current game rules. The student improved reward and gem collection, but pure model play still did not complete a level. Four seeds are insufficient to establish broad superiority."
+}

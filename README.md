@@ -149,7 +149,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **93 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **94 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>
@@ -161,6 +161,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
 - 2 AP head-only 烟测：dev CE 2.5745 → 2.1137，GTX 1660S 峰值显存 2.53GB。
 - 100k 分层抽样 quick checkpoint：1k 条、20 steps、约 5 分钟，dev CE 2.4718 → 2.2208，峰值显存 2.52GB。
 - 真实第 3 关 4×100 hybrid benchmark：4/4 收齐宝石，0 死亡。
+- Beam Teacher 10k 蒸馏 500 步耗时约 74 分钟；同种子第 3 关 4×100 对照中，纯模型奖励从 14.35 升至 71.53、宝石从 0 升至 5，但仍未独立通关；混合策略奖励从 98.79 升至 106.10，两者均 4/4 通关。此为小样本烟测，不代表正式 100-seed 结论。
 
 详细文件：
 
@@ -169,6 +170,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
 - [`baselines/v2/mcts_rule_3x100.json`](baselines/v2/mcts_rule_3x100.json)
 - [`baselines/v2/complexity_100x100.json`](baselines/v2/complexity_100x100.json)
 - [`baselines/v2/nanojev_ap_benchmark_4x100.json`](baselines/v2/nanojev_ap_benchmark_4x100.json)
+- [`baselines/v2/beam_distillation_4x100.json`](baselines/v2/beam_distillation_4x100.json)
 
 </details>
 
