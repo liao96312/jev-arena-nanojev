@@ -146,6 +146,7 @@ class ApexArbiter:
     gate: tuple[int, int] | None = None
     gate_broken: bool = False
     finale_cycles: int = 0
+    appeal: tuple[int, int] | None = None
 
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""

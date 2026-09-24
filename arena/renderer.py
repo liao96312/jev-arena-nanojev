@@ -291,7 +291,8 @@ class ArenaRenderer:
                               if event.startswith("apex_fire:")), None)
                 if fired:
                     effect = {"cage": "effect_boss_magma_wave", "barrage": "effect_boss_chain_lightning",
-                              "charge": "effect_boss_mirror_shards", "gravity": "effect_boss_gravity_vortex"}[fired[1]]
+                              "charge": "effect_boss_mirror_shards", "gravity": "effect_boss_gravity_vortex",
+                              "verdict": "effect_boss_law_convergence"}[fired[1]]
                     if fired[1] == "barrage":
                         safe = (0 if env.boss.seals < 4 else
                                 ((env.boss.finale_cycles - 1) // 2 + 1) % 3)
@@ -511,9 +512,13 @@ class ArenaRenderer:
                     self._text(f"删格倒计时：{env.boss.erase_countdown}", left, 312,
                                (249, 170, 215), small=True)
             if isinstance(env.boss, ApexArbiter) and not env.boss.exposed_rounds:
-                names = {"cage": "熔锁牢笼", "barrage": "雷幕弹雨", "charge": "镜面冲撞", "gravity": "坍缩漩涡"}
+                names = {"cage": "熔锁牢笼", "barrage": "雷幕弹雨", "charge": "镜面冲撞",
+                         "gravity": "坍缩漩涡", "verdict": "终审判词"}
                 self._text(f"当前法则：{names[env.boss.kind]} · 预警 {env.boss.countdown}",
                            left, 289, (255, 215, 167), small=True)
+                if env.boss.kind == "verdict" and env.boss.countdown:
+                    self._text("踩白色上诉位反弹判词；黄格会受伤", left, 312,
+                               (219, 255, 210), small=True)
         self._text(f"智能体：{AGENT_NAMES.get(agent, agent)}", left, 55, colors["muted"])
         self._text(f"动作：{ACTION_NAMES.get(action, action)}", left, 80, colors["text"])
         self._text(f"推理耗时：{latency_ms:.1f} 毫秒", left, 105, colors["muted"])
@@ -800,7 +805,8 @@ class ArenaRenderer:
                 return
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
             palette = {"cage": (255, 137, 63), "barrage": (98, 197, 255),
-                       "charge": (222, 133, 255), "gravity": (112, 237, 157)}
+                       "charge": (222, 133, 255), "gravity": (112, 237, 157),
+                       "verdict": (255, 216, 112)}
             color = palette[env.boss.kind]
             for x, y in env.boss.danger:
                 self.pg.draw.rect(overlay, (*color, 115 if env.boss.countdown == 1 else 65),
@@ -811,6 +817,11 @@ class ArenaRenderer:
                 self.pg.draw.rect(overlay, (255, 245, 196, 220),
                                   (x * self.CELL + 3, y * self.CELL + 3,
                                    self.CELL - 6, self.CELL - 6), 3, border_radius=4)
+            if env.boss.appeal:
+                x, y = env.boss.appeal
+                center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
+                self.pg.draw.circle(overlay, (248, 255, 220, 240), center, 14, 4)
+                self.pg.draw.circle(overlay, (128, 255, 216, 200), center, 7)
             self.screen.blit(overlay, (0, 0))
             return
         if isinstance(env.boss, NullWeaver):
@@ -1148,11 +1159,13 @@ class ArenaRenderer:
             elif event == "null_displace": labels.append("被断裂地板弹开！")
             elif event == "null_reverse_write": labels.append("逆向写入完成：核心开放！")
             elif event.startswith("null_block:"): labels.append("Boss 封锁了一类动作，查看右侧提示！")
+            elif event.startswith("apex_aim:verdict:"): labels.append("终审判词：踩白色上诉位反弹伤害！")
             elif event.startswith("apex_aim:"): labels.append("裁决法则锁定：按地面预警走位！")
             elif event.startswith("apex_cage:"): labels.append("牢笼成形：击碎白色闸门后离开！")
             elif event == "apex_gate_break": labels.append("闸门击碎：火流即将反向回灌！")
             elif event.startswith("apex_fire:"): labels.append("裁决攻击爆发！")
             elif event.startswith("apex_seal:"): labels.append("封印充能！")
+            elif event == "apex_appeal": labels.append("终审上诉成功：判词反弹，核心开放！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")

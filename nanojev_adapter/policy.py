@@ -162,6 +162,10 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
                 targets = {env.apex_seals[3]}
                 if env.player.position in targets and "wait" in safest:
                     return "wait", "boss_tactics"
+            elif boss.kind == "verdict" and boss.countdown and boss.appeal:
+                targets = {boss.appeal}
+                if env.player.position == boss.appeal and "wait" in safest:
+                    return "wait", "boss_tactics"
             else:
                 targets = {(10, 12)}
         elif isinstance(boss, NullWeaver):

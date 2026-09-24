@@ -126,7 +126,8 @@ def encode_state(env: ArenaEnv) -> str:
                 f"exposed={env.boss.exposed_rounds} law={env.boss.kind} "
                 f"target={env.boss.target or '-'} countdown={env.boss.countdown} "
                 f"danger={sorted(env.boss.danger)} cage={sorted(env.apex_cage)} "
-                f"gate={env.boss.gate or '-'} finale={env.boss.finale_cycles}.")
+                f"gate={env.boss.gate or '-'} appeal={env.boss.appeal or '-'} "
+                f"finale={env.boss.finale_cycles}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "

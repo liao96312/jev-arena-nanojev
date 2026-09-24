@@ -1429,14 +1429,16 @@ class ArenaEnv:
             return 0.0
         if not boss.countdown:
             boss.kind = (("cage", "barrage", "charge", "gravity")[boss.seals]
-                         if boss.seals < 4 else ("barrage", "charge")[boss.finale_cycles % 2])
+                         if boss.seals < 4 else ("barrage", "charge", "verdict")[boss.finale_cycles % 3])
             boss.target = self.player.position
             boss.gate_broken = False
+            boss.appeal = None
             if boss.kind == "cage":
                 directions = ("n", "e", "w", "s")
                 boss.gate = next((self.add(boss.target, d) for d in directions
                                   if self.in_bounds(self.add(boss.target, d)) and
-                                  self.add(boss.target, d) not in self.walls | self.pits | self.barrels), None)
+                                  self.add(boss.target, d) not in self.walls | self.pits | self.barrels and
+                                  not self.boss_at(self.add(boss.target, d))), None)
                 boss.danger = {boss.target}
                 boss.countdown = 2
             elif boss.kind == "barrage":
@@ -1447,6 +1449,16 @@ class ArenaEnv:
             elif boss.kind == "charge":
                 boss.danger = set(ray_cells(boss.position, boss.target)) - self.walls
                 boss.countdown = 1
+            elif boss.kind == "verdict":
+                boss.appeal = next((self.add(boss.target, direction) for direction in ("n", "e", "w", "s")
+                                    if self.in_bounds(self.add(boss.target, direction)) and
+                                    self.add(boss.target, direction) not in self.walls | self.pits | self.barrels and
+                                    not self.boss_at(self.add(boss.target, direction))), None)
+                x, y = boss.target
+                boss.danger = {(x + dx, y + dy) for dx in range(-2, 3) for dy in range(-2, 3)
+                               if abs(dx) + abs(dy) <= 2 and (x + dx, y + dy) != boss.appeal and
+                               self.in_bounds((x + dx, y + dy))}
+                boss.countdown = 2
             else:
                 boss.danger = {(boss.target[0] + dx, boss.target[1] + dy)
                                for dx in range(-1, 2) for dy in range(-1, 2)
@@ -1495,25 +1507,29 @@ class ArenaEnv:
             if reflected:
                 boss.seals += 1
                 events.append("apex_seal:3")
-        else:
+        elif boss.kind == "gravity":
             if self.player.position in boss.danger and self.player.position != self.apex_seals[3]:
                 reward += self._damage_entity(self.player, 24, events, "apex_gravity")
             if boss.seals == 3 and boss.target == self.apex_seals[3] and self.player.position == boss.target:
                 boss.seals += 1
                 events.append("apex_seal:4")
+        else:
+            if boss.appeal and self.player.position == boss.appeal:
+                events.append("apex_appeal")
+            elif self.player.position in boss.danger:
+                reward += self._damage_entity(self.player, 36, events, "apex_verdict")
         events.append(f"apex_fire:{boss.kind}:{boss.target[0]}:{boss.target[1]}")
         boss.countdown = 0
         boss.danger.clear()
-        boss.target = boss.gate = None
+        boss.target = boss.gate = boss.appeal = None
         if boss.seals == 4:
-            if "apex_seal:4" in events:
+            if "apex_seal:4" in events or "apex_appeal" in events:
+                if "apex_appeal" in events:
+                    boss.finale_cycles += 1
                 boss.exposed_rounds = 6
                 events.append("boss_shield_break")
             else:
                 boss.finale_cycles += 1
-                if boss.finale_cycles % 2 == 0:
-                    boss.exposed_rounds = 6
-                    events.append("boss_shield_break")
         return reward
 
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
@@ -1815,7 +1831,8 @@ class ArenaEnv:
                 threats.append(("null_weaver/fracture", self.boss.fracture_damage))
         if isinstance(self.boss, ApexArbiter) and self.boss.countdown == 1:
             if position in self.boss.danger:
-                power = {"cage": 26, "barrage": 16, "charge": 32, "gravity": 24}[self.boss.kind]
+                power = {"cage": 26, "barrage": 16, "charge": 32, "gravity": 24,
+                         "verdict": 36}[self.boss.kind]
                 if not (self.boss.kind == "cage" and self.boss.gate_broken or
                         self.boss.kind == "charge" and self.apex_seals[2] in self.boss.danger or
                         self.boss.kind == "gravity" and position == self.apex_seals[3]):
@@ -1904,7 +1921,7 @@ class ArenaEnv:
                      ("apex", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.seals, self.boss.kind, self.boss.target, self.boss.countdown,
                       tuple(sorted(self.boss.danger)), self.boss.gate, self.boss.gate_broken,
-                      self.boss.finale_cycles) if self.boss else None),
+                      self.boss.finale_cycles, self.boss.appeal) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
             "coolant_valves": tuple(sorted(self.coolant_valves)),
             "grounding_pylons": tuple(sorted(self.grounding_pylons)),

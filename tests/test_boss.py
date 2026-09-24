@@ -811,6 +811,48 @@ class ApexBossTests(unittest.TestCase):
             self.assertTrue(env.done, seal)
             self.assertEqual(env.player.hp, 0, seal)
 
+    def test_verdict_requires_an_active_appeal_to_reopen_core(self):
+        env = ArenaEnv(campaign_config(100))
+        boss = env.boss
+        boss.seals = 4
+        boss.finale_cycles = 2
+        env.player.position = (10, 12)
+        events = []
+        env._resolve_apex(boss, events)
+        self.assertEqual(boss.kind, "verdict")
+        self.assertEqual(boss.countdown, 2)
+        self.assertEqual(boss.appeal, (10, 11))
+        self.assertNotIn(boss.appeal, boss.danger)
+        env._resolve_apex(boss, events)
+        env.player.position = boss.appeal
+        env._resolve_apex(boss, events)
+        self.assertIn("apex_appeal", events)
+        self.assertEqual(boss.exposed_rounds, 6)
+        self.assertEqual(env.player.hp, 100)
+
+        env = ArenaEnv(campaign_config(100))
+        boss = env.boss
+        boss.seals = 4
+        boss.finale_cycles = 2
+        env.player.position = (10, 12)
+        events = []
+        for _ in range(3):
+            env._resolve_apex(boss, events)
+        self.assertIn("damage:apex_verdict:36", events)
+        self.assertEqual(boss.exposed_rounds, 0)
+
+    def test_verdict_has_a_one_step_appeal_from_every_reachable_tile(self):
+        base = ArenaEnv(campaign_config(100))
+        for position in base._reachable_cells() - {base.boss.position}:
+            env = base.clone()
+            env.player.position = position
+            env.boss.seals = 4
+            env.boss.finale_cycles = 2
+            env._resolve_apex(env.boss, [])
+            self.assertIsNotNone(env.boss.appeal, position)
+            self.assertEqual(env._distance(position, env.boss.appeal), 1)
+            self.assertNotIn(env.boss.appeal, env.boss.danger)
+
     def test_default_hybrid_and_rule_finish(self):
         for rule in (False, True):
             env, agent = ArenaEnv(campaign_config(100)), RuleAgent()
