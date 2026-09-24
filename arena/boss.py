@@ -37,8 +37,8 @@ class FurnaceHydra:
 @dataclass
 class StormChoir:
     position: tuple[int, int] = (10, 5)
-    hp: int = 84
-    max_hp: int = 84
+    hp: int = 132
+    max_hp: int = 132
     exposed_rounds: int = 0
     target: tuple[int, int] | None = None
     attack_kind: str = "chain"

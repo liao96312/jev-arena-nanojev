@@ -274,7 +274,33 @@ class StormBossTests(unittest.TestCase):
         self.assertTrue(env.done)
         self.assertEqual(env.player.hp, 100)
         self.assertEqual(events.count("storm_grounded"), 2)
+        self.assertIn("storm_phase_two", events)
+        self.assertIn("storm_relay_shift", events)
         self.assertIn("boss_defeated", events)
+
+    def test_storm_phase_two_surge_and_shifted_relays(self):
+        env = ArenaEnv(campaign_config(30))
+        env.round = 3
+        env.boss.hp = 80
+        env.boss.attack_kind = "surge"
+        env.boss.target = env.player.position
+        self.assertIn(("storm_choir/surge", 30), env.imminent_threats())
+        env.step(Action.WAIT)
+        surge = env.step(Action.WAIT)
+        self.assertIn("damage:storm_surge:30", surge.events)
+
+        env = ArenaEnv(campaign_config(30))
+        env.round = 3
+        env.boss.hp = 80
+        env.boss.exposed_rounds = 1
+        env.step(Action.WAIT)
+        shifted = env.step(Action.WAIT)
+        self.assertIn("storm_relay_shift", shifted.events)
+        self.assertEqual(env.relay_pads, {(7, 8), (13, 8)})
+        self.assertTrue(env.relay_pads <= env._reachable_cells())
+        for pad in env.relay_pads:
+            env.boss.target = pad
+            self.assertEqual(len(env.storm_chain()), 6)
 
 
 class ChronoBossTests(unittest.TestCase):

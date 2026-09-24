@@ -82,9 +82,10 @@ def encode_state(env: ArenaEnv) -> str:
                 f"coolant={sorted(env.coolant_valves)}.")
     elif isinstance(env.boss, StormChoir):
         boss = (f" Boss storm@{env.boss.position} hp={env.boss.hp} exposed={env.boss.exposed_rounds} "
+                f"phase={2 if env.boss.hp <= env.boss.max_hp * 2 // 3 else 1} "
                 f"{env.boss.attack_kind} aim={env.boss.target or '-'} "
                 f"links={max(0, len(env.storm_chain()) - 2)}/4 "
-                f"relay=8,8|10,8|12,8 arc{env.boss.arc_damage}/surge{env.boss.surge_damage}.")
+                f"relay={sorted(env.relay_pads)} arc{env.boss.arc_damage}/surge{env.boss.surge_damage}.")
     elif isinstance(env.boss, ChronoMantis):
         boss = (f" Boss chrono@{env.boss.position} hp={env.boss.hp} exposed={env.boss.exposed_rounds} "
                 f"phase={env.boss.phase} slash={env.boss.slash_target or '-'} "

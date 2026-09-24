@@ -608,6 +608,14 @@ class ArenaRenderer:
                 self.pg.draw.line(overlay, (157, 222, 255, 210), a, b, 3)
             target = boss.target
             safe = boss.attack_kind == "chain" and target in env.relay_pads and len(nodes) == 6
+            if boss.attack_kind == "surge":
+                for dx in range(-1, 2):
+                    for dy in range(-1 + abs(dx), 2 - abs(dx)):
+                        x, y = target[0] + dx, target[1] + dy
+                        if env.in_bounds((x, y)):
+                            self.pg.draw.rect(overlay, (255, 92, 116, 110),
+                                              (x * self.CELL + 2, y * self.CELL + 2,
+                                               self.CELL - 4, self.CELL - 4), border_radius=5)
             center = (target[0] * self.CELL + self.CELL // 2,
                       target[1] * self.CELL + self.CELL // 2)
             self.pg.draw.circle(overlay, (86, 235, 255, 220) if safe else (255, 105, 72, 225),
@@ -751,6 +759,8 @@ class ArenaRenderer:
             elif event.startswith("furnace_valve:"): labels.append("冷却阀反制成功！")
             elif event.startswith("storm_aim:chain:"): labels.append("连锁雷网预警：站在蓝色导电位接地！")
             elif event.startswith("storm_aim:surge:"): labels.append("高压雷爆锁定：离开目标周围！")
+            elif event == "storm_phase_two": labels.append("风暴合唱环进入二阶段：雷爆更强！")
+            elif event == "storm_relay_shift": labels.append("导电位移到两侧：去蓝色新落点！")
             elif event.startswith("storm_chain:"): labels.append("连锁闪电穿过接地柱！")
             elif event.startswith("storm_surge:"): labels.append("高压雷爆！")
             elif event == "storm_grounded": labels.append("四柱接地回灌：核心开放！")

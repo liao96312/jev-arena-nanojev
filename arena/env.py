@@ -583,6 +583,8 @@ class ArenaEnv:
                 events.append("boss_prism_phase_two")
             if isinstance(entity, FurnaceHydra) and entity.hp > 0 and entity.hp <= entity.max_hp // 2 < entity.hp + actual:
                 events.append("furnace_phase_two")
+            if isinstance(entity, StormChoir) and entity.hp > 0 and entity.hp <= entity.max_hp * 2 // 3 < entity.hp + actual:
+                events.append("storm_phase_two")
             if entity.hp <= 0:
                 self.boss = None
                 self.kills += 1
@@ -818,6 +820,9 @@ class ArenaEnv:
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if not boss.exposed_rounds:
+                if boss.hp <= boss.max_hp * 2 // 3 and self.relay_pads != {(7, 8), (13, 8)}:
+                    self.relay_pads = {(7, 8), (13, 8)}
+                    events.append("storm_relay_shift")
                 events.append("boss_shield_restored")
             return 0.0
         if boss.target is None:
@@ -841,7 +846,8 @@ class ArenaEnv:
         else:
             events.append(f"storm_surge:{boss.target[0]}:{boss.target[1]}")
             if self._distance(self.player.position, boss.target) <= 1:
-                reward += self._damage_entity(self.player, boss.surge_damage, events, "storm_surge")
+                damage = boss.surge_damage + (4 if boss.hp <= boss.max_hp * 2 // 3 else 0)
+                reward += self._damage_entity(self.player, damage, events, "storm_surge")
         boss.attacks += 1
         boss.target = None
         if not boss.exposed_rounds:
@@ -1189,7 +1195,8 @@ class ArenaEnv:
                         not (position == self.boss.target and position in self.relay_pads and len(chain) == 6)):
                     threats.append(("storm_choir/arc", self.boss.arc_damage))
             elif self._distance(position, self.boss.target) <= 1:
-                threats.append(("storm_choir/surge", self.boss.surge_damage))
+                damage = self.boss.surge_damage + (4 if self.boss.hp <= self.boss.max_hp * 2 // 3 else 0)
+                threats.append(("storm_choir/surge", damage))
         if isinstance(self.boss, ChronoMantis):
             if self.boss.phase == "slash" and self._distance(position, self.boss.slash_target) <= 1:
                 threats.append(("chrono_mantis/slash", self.boss.slash_damage))
