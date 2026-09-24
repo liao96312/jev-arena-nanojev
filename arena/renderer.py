@@ -133,14 +133,16 @@ class ArenaRenderer:
             pg.draw.circle(self.screen, (98, 119, 88) if used else (133, 236, 122), center, 16, 3)
             pg.draw.line(self.screen, (255, 201, 102),
                          (center[0] - 8, center[1] + 8), (center[0] + 8, center[1] - 8), 2)
-        for position in env.mirror_locks:
+        for position in sorted(env.mirror_locks):
             broken = isinstance(env.boss, MirrorSeraph) and position in env.boss.broken_locks
             center = (position[0] * self.CELL + self.CELL // 2,
                       position[1] * self.CELL + self.CELL // 2)
             pg.draw.polygon(self.screen, (104, 91, 123) if broken else (255, 176, 244),
                             [(center[0], center[1] - 15), (center[0] + 14, center[1]),
                              (center[0], center[1] + 15), (center[0] - 14, center[1])], 3)
-            pg.draw.circle(self.screen, (106, 94, 124) if broken else (255, 236, 255), center, 5)
+            mark = {(6, 6): "左", (14, 6): "右", (10, 11): "下"}[position]
+            label = self.small.render(mark, True, (130, 112, 143) if broken else (255, 239, 255))
+            self.screen.blit(label, label.get_rect(center=center))
         for position in env.rail_locks:
             broken = isinstance(env.boss, SiegeLeviathan) and position in env.boss.broken_locks
             center = (position[0] * self.CELL + self.CELL // 2,
@@ -490,20 +492,31 @@ class ArenaRenderer:
                 label, tint = "棱镜守卫", (244, 164, 255)
             self._text(f"{label}  HP {env.boss.hp}/{env.boss.max_hp}  {state}",
                        left, 265, tint, small=True)
-            if isinstance(env.boss, MirrorSeraph) and env.boss.copied_action:
-                directions = {"n": "上", "s": "下", "e": "右", "w": "左"}
-                copied = env.boss.copied_action
-                kind = ("冲刺" if copied.startswith("dash_") else "移动" if copied.startswith("move_")
-                        else "射击" if copied.startswith("shoot_") else "近战" if copied.startswith("attack_")
-                        else "治疗" if copied == "heal" else "电磁" if copied == "emp" else copied)
-                original = directions.get(copied[-1], "—")
-                mirrored = directions.get(env.boss.mirrored_direction, "—")
-                self._text(f"将复制：{kind}{original} → 实际：{mirrored}", left, 289,
-                           (255, 210, 242), small=True)
-            if isinstance(env.boss, SiegeLeviathan) and env.boss.rail_target is not None:
-                lane = "列" if env.boss.rail_axis == "v" else "行"
-                self._text(f"轨道炮：{lane} {env.boss.rail_target} · 蓄力 {env.boss.charge}",
+            if isinstance(env.boss, MirrorSeraph):
+                self._text(f"镜锁 {len(env.boss.broken_locks)}/3 · 先借 Boss 射线破锁",
+                           left, 289, (255, 210, 242), small=True)
+                if env.boss.exposed_rounds:
+                    self._text("护盾已破：现在攻击 Boss 本体！", left, 312,
+                               (179, 255, 200), small=True)
+                else:
+                    self._text("右→左锁  左→右锁  下→下锁", left, 312,
+                               (255, 210, 242), small=True)
+                if env.boss.copied_action:
+                    directions = {"n": "上", "s": "下", "e": "右", "w": "左"}
+                    original = directions.get(env.boss.copied_action[-1], "—")
+                    mirrored = directions.get(env.boss.mirrored_direction, "—")
+                    self._text(f"正在复制你的{original}动作：向{mirrored}发射", left, 335,
+                               (255, 235, 253), small=True)
+            if isinstance(env.boss, SiegeLeviathan):
+                self._text(f"装甲锁 {len(env.boss.broken_locks)}/4 · 炮击掩体破锁",
                            left, 289, (255, 214, 168), small=True)
+                if env.boss.rail_target is not None:
+                    lane = "列" if env.boss.rail_axis == "v" else "行"
+                    self._text(f"轨道炮：{lane} {env.boss.rail_target} · 蓄力 {env.boss.charge}",
+                               left, 312, (255, 214, 168), small=True)
+                else:
+                    self._text("站掩体后引导炮线；破盾后攻击本体", left, 312,
+                               (255, 214, 168), small=True)
             if isinstance(env.boss, NullWeaver) and not env.boss.exposed_rounds:
                 labels = {"move": "普通移动", "melee": "近战", "ranged": "远程", "skill": "技能"}
                 blocked = labels.get(env.boss.blocked_kind, "无")
@@ -546,8 +559,8 @@ class ArenaRenderer:
         self._text(f"武器：弓 {'未获得' if not loadout.bow else f'{loadout.arrows} 箭'}  "
                    f"手枪 {'未获得' if not loadout.pistol else f'{loadout.energy} 发'}",
                    left, 218, colors["muted"], small=True)
-        y = 294 if env.boss else 245
-        for name, probability in sorted(probabilities.items(), key=lambda item: item[1], reverse=True):
+        y = 365 if env.boss else 245
+        for name, probability in sorted(probabilities.items(), key=lambda item: item[1], reverse=True)[:7 if env.boss else 11]:
             self._text(f"{ACTION_NAMES.get(name, name)}  {probability:>6.1%}", left, y,
                        colors["text"], small=True)
             pg.draw.rect(self.screen, colors["grid"], (left, y + 20, 290, 8))

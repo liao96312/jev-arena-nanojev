@@ -682,6 +682,12 @@ class MirrorBossTests(unittest.TestCase):
 
 
 class SiegeBossTests(unittest.TestCase):
+    def test_cover_shove_is_a_valid_model_candidate(self):
+        env = ArenaEnv(campaign_config(80))
+        env.step("dash_n")
+        self.assertEqual(env.player.position, (10, 14))
+        self.assertIn("rail cover", build_candidates(env)["shove_n"])
+
     def test_heavy_reposition_only_before_rail_lock(self):
         env = ArenaEnv(campaign_config(80))
         env.player.position = (7, 12)

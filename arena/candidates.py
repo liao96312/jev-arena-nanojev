@@ -114,20 +114,24 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                 description += f"; kit {before}->{after}"
         elif action.value.startswith("shove_"):
             direction = action.value[-1]
-            enemy = env.enemy_at(env.add(env.player.position, direction))
-            destination = env.add(enemy.position, direction)
-            if destination in env.pits:
-                description += " into pit; instant kill"
-            elif destination in env.fires:
-                description += f" into fire; damage={env.config.fire_damage}"
-            elif destination in env.spikes:
-                description += f" into spike; damage={env.config.spike_damage}"
-            elif destination in env.walls:
-                description += f" into wall; damage={env.config.collision_damage}"
-            elif env.enemy_at(destination):
-                description += f" into enemy; both damage={env.config.collision_damage}"
+            target = env.add(env.player.position, direction)
+            enemy = env.enemy_at(target)
+            if enemy is None:
+                description += "; push rail cover x1"
             else:
-                description += " x1"
+                destination = env.add(enemy.position, direction)
+                if destination in env.pits:
+                    description += " into pit; instant kill"
+                elif destination in env.fires:
+                    description += f" into fire; damage={env.config.fire_damage}"
+                elif destination in env.spikes:
+                    description += f" into spike; damage={env.config.spike_damage}"
+                elif destination in env.walls:
+                    description += f" into wall; damage={env.config.collision_damage}"
+                elif env.enemy_at(destination):
+                    description += f" into enemy; both damage={env.config.collision_damage}"
+                else:
+                    description += " x1"
         elif action.value.startswith("dash_"):
             direction = action.value[-1]
             middle = env.add(env.player.position, direction)
@@ -148,11 +152,16 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
             range_ = env.config.bow_range if weapon == "bow" else env.config.pistol_range
             enemy_target = env._ray_target(env.player.position, action.value[-1], range_)
             barrel_target = env._barrel_target(env.player.position, action.value[-1], range_)
-            if barrel_target and (not enemy_target or barrel_target[1] < enemy_target[1]):
+            gate_distance = env._apex_gate_distance(action.value[-1], range_)
+            if gate_distance is not None:
+                description += f"; break cage gate/{gate_distance}"
+            elif barrel_target and (not enemy_target or barrel_target[1] < enemy_target[1]):
                 description += f"; barrel/{barrel_target[1]} blast"
-            else:
+            elif enemy_target:
                 enemy, distance = enemy_target
                 damage = env.config.bow_damage if weapon == "bow" else env.config.pistol_damage
+                boss_types = (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler,
+                              IronGardener, MirrorSeraph, SiegeLeviathan, NullWeaver, ApexArbiter)
                 kind = ("prism_warden" if isinstance(enemy, PrismWarden) else
                         "furnace_hydra" if isinstance(enemy, FurnaceHydra) else
                         "storm_choir" if isinstance(enemy, StormChoir) else
@@ -161,12 +170,15 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                         "iron_gardener" if isinstance(enemy, IronGardener) else
                         "mirror_seraph" if isinstance(enemy, MirrorSeraph) else
                         "siege_leviathan" if isinstance(enemy, SiegeLeviathan) else
-                        "null_weaver" if isinstance(enemy, NullWeaver) else enemy.enemy_type.value)
-                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan, NullWeaver))
+                        "null_weaver" if isinstance(enemy, NullWeaver) else
+                        "apex_arbiter" if isinstance(enemy, ApexArbiter) else enemy.enemy_type.value)
+                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, boss_types)
                              or enemy.exposed_rounds else enemy.hp)
                 description += f"; {kind}/{distance} hp {enemy.hp}->{remaining}"
-                if weapon == "bow" and not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan, NullWeaver)) and enemy.hp > damage:
+                if weapon == "bow" and not isinstance(enemy, boss_types) and enemy.hp > damage:
                     description += "; push=1"
+            else:
+                description += "; no target"
         consequence = _immediate_consequence(env, action)
         candidates[action.value] = description + ("; immediate: " + consequence if consequence else "")
     return candidates
