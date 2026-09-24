@@ -950,7 +950,7 @@ class ArenaRenderer:
                 return
             for cell in cells:
                 if env.in_bounds(cell):
-                    tint = (116, 239, 188, 135) if boss.phase == "leap" and cell in env.time_anchors else color
+                    tint = (116, 239, 188, 135) if cell in env.time_anchors else color
                     self.pg.draw.rect(overlay, tint,
                                       (cell[0] * self.CELL + 2, cell[1] * self.CELL + 2,
                                        self.CELL - 4, self.CELL - 4), border_radius=5)
@@ -1138,6 +1138,7 @@ class ArenaRenderer:
             elif event == "chrono_phase_two": labels.append("时序螳螂进入二阶段！")
             elif event == "chrono_anchor_shift": labels.append("时间锚移到后方通道！")
             elif event.startswith("chrono_slash:"): labels.append("时序螳螂近斩！")
+            elif event == "chrono_anchor_guard": labels.append("时间锚挡住近斩，守住落点接跳！")
             elif event.startswith("chrono_leap_aim:"): labels.append("跳杀锁定当前位置！离开紫格，或用时间锚反制！")
             elif event.startswith("chrono_leap_charge:"): labels.append("跃迁蓄力：落点不再改变！")
             elif event.startswith("chrono_leap:"): labels.append("时序螳螂跃迁！")

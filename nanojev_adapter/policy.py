@@ -230,7 +230,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         else:
             landing_x = env.chrono_landing_x()
             targets = {anchor for anchor in env.time_anchors if anchor[0] == landing_x}
-            if env.player.position in targets and "wait" in safest and boss.phase != "slash":
+            if env.player.position in targets and "wait" in safest:
                 return "wait", "boss_tactics"
         routes = _gem_route_actions(env, probabilities, targets) & safest
         if routes:

@@ -1101,7 +1101,10 @@ class ArenaEnv:
             reward = 0.0
             events.append(f"chrono_slash:{target[0]}:{target[1]}")
             if self._distance(self.player.position, target) <= 1:
-                reward += self._damage_entity(self.player, boss.slash_damage, events, "chrono_slash")
+                if self.player.position in self.time_anchors:
+                    events.append("chrono_anchor_guard")
+                else:
+                    reward += self._damage_entity(self.player, boss.slash_damage, events, "chrono_slash")
             boss.leap_target = self.player.position
             boss.leap_countdown = 2
             boss.phase = "leap"
@@ -1917,7 +1920,8 @@ class ArenaEnv:
                 damage = self.boss.surge_damage + (4 if self.boss.hp <= self.boss.max_hp * 2 // 3 else 0)
                 threats.append(("storm_choir/surge", damage))
         if isinstance(self.boss, ChronoMantis):
-            if self.boss.phase == "slash" and self._distance(position, self.boss.slash_target) <= 1:
+            if (self.boss.phase == "slash" and position not in self.time_anchors and
+                    self._distance(position, self.boss.slash_target) <= 1):
                 threats.append(("chrono_mantis/slash", self.boss.slash_damage))
             if self.boss.phase == "leap":
                 if position == self.boss.leap_target and position not in self.time_anchors:

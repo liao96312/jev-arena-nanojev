@@ -1,3 +1,4 @@
+import random
 import unittest
 
 from agents import RuleAgent
@@ -320,6 +321,30 @@ class StormBossTests(unittest.TestCase):
 
 
 class ChronoBossTests(unittest.TestCase):
+    def test_anchor_guards_slash_and_biased_policy_attacks_core(self):
+        env = ArenaEnv(campaign_config(40))
+        env.player.position = (9, 11)
+        env.boss.phase = "slash"
+        env.boss.slash_target = (9, 11)
+        events = []
+        env._resolve_chrono(env.boss, events)
+        self.assertIn("chrono_anchor_guard", events)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(env.boss.leap_target, (9, 11))
+
+        env = ArenaEnv(campaign_config(40))
+        rng = random.Random(16)
+        hits = 0
+        for _ in range(120):
+            if env.done:
+                break
+            probabilities = {action.value: rng.random() + .01 for action in env.legal_actions()}
+            action, _ = select_action(probabilities, env, "hybrid")
+            hits += sum(event.startswith("boss_hit:") for event in env.step(action).events)
+        self.assertTrue(env.done)
+        self.assertGreater(hits, 0)
+        self.assertEqual(env.player.hp, 100)
+
     def test_flank_changes_side_with_player_without_teleporting(self):
         right = ArenaEnv(campaign_config(40))
         right.round = 3
