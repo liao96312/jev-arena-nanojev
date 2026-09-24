@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, ENEMY_SPEED_LEVEL, Action,
                        Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout)
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, PrismWarden, StormChoir, VoidAngler, ray_cells
+from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, StormChoir, VoidAngler, ray_cells
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class ArenaConfig:
 def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
-    if level in (10, 20, 30, 40, 50, 60):
+    if level in (10, 20, 30, 40, 50, 60, 70):
         return ArenaConfig(difficulty_level=level, max_ticks=300, walls=0, enemies=0, gems=0,
                            fires=0, spikes=0, pits=0, barrels=0, medkits=0,
                            enemy_hp_bonus=level - 1, action_points=2, spawn_protection_rounds=2,
@@ -132,6 +132,7 @@ class ArenaEnv:
         self.damage_taken = 0
         self.previous_player_position: tuple[int, int] | None = None
         self.last_action: str | None = None
+        self.last_non_wait_action: str | None = None
         self.done = False
         for _ in range(20):
             self._generate_map()
@@ -141,7 +142,7 @@ class ArenaEnv:
         raise RuntimeError("could not generate a playable map after 20 attempts")
 
     def _generate_map(self) -> None:
-        self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | None = None
+        self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | None = None
         self.reflectors: set[tuple[int, int]] = set()
         self.breakable_walls: set[tuple[int, int]] = set()
         self.coolant_valves: set[tuple[int, int]] = set()
@@ -150,17 +151,19 @@ class ArenaEnv:
         self.time_anchors: set[tuple[int, int]] = set()
         self.gravity_nodes: set[tuple[int, int]] = set()
         self.root_plates: set[tuple[int, int]] = set()
+        self.mirror_locks: set[tuple[int, int]] = set()
         self.vine_seeds: dict[tuple[int, int], int] = {}
         self.vine_walls: set[tuple[int, int]] = set()
         self.forge_floor: set[tuple[int, int]] = set()
         self.furnace_burns: dict[tuple[int, int], int] = {}
-        if self.config.difficulty_level in (10, 20, 30, 40, 50, 60) and self.config.finish_on_all_gems:
+        if self.config.difficulty_level in (10, 20, 30, 40, 50, 60, 70) and self.config.finish_on_all_gems:
             furnace = self.config.difficulty_level == 20
             storm = self.config.difficulty_level == 30
             chrono = self.config.difficulty_level == 40
             void = self.config.difficulty_level == 50
             iron = self.config.difficulty_level == 60
-            self.player = Player((10, 16 if furnace or storm or chrono or void or iron else 15), loadout=self.loadout)
+            mirror = self.config.difficulty_level == 70
+            self.player = Player((10, 16 if furnace or storm or chrono or void or iron or mirror else 15), loadout=self.loadout)
             if furnace:
                 self.player.loadout.bow = True
                 self.player.loadout.arrows = max(10, self.player.loadout.arrows)
@@ -177,7 +180,7 @@ class ArenaEnv:
                                        1 if y in (2, 3, 16, 17) else 0,
                                        17 if y in (0, 1, 18, 19) else
                                        19 if y in (2, 3, 16, 17) else 20)}
-            elif iron:
+            elif iron or mirror:
                 self.player.loadout.pistol = True
                 self.player.loadout.energy = max(12, self.player.loadout.energy)
                 room = {(x, y) for y in range(20)
@@ -241,7 +244,7 @@ class ArenaEnv:
                 self.arrow_bundles = set()
                 self.gravity_nodes = {(7, 11), (10, 12), (13, 11)}
                 self.boss = VoidAngler()
-            else:
+            elif iron:
                 self.walls |= {(4, 8), (15, 8), (5, 14), (15, 14)}
                 self.pits = {(3, 11), (16, 11), (4, 16), (15, 16)}
                 self.medkits, self.energy_cells = {(6, 15), (14, 15)}, {(7, 16), (13, 16)}
@@ -250,6 +253,14 @@ class ArenaEnv:
                 self.root_plates = {(x, 12) for x in (6, 9, 12, 15)}
                 self.vine_seeds = {(x, 10): 2 for x in (6, 9, 12, 15)}
                 self.boss = IronGardener()
+            else:
+                self.walls |= {(4, 9), (16, 9), (6, 12), (14, 12), (5, 15), (15, 15)}
+                self.pits = {(3, 11), (17, 11)}
+                self.medkits, self.energy_cells = {(6, 15), (14, 15)}, {(8, 16), (12, 16)}
+                self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
+                self.arrow_bundles = set()
+                self.mirror_locks = {(6, 6), (14, 6), (10, 11)}
+                self.boss = MirrorSeraph()
             return
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
@@ -337,7 +348,7 @@ class ArenaEnv:
     def enemy_at(self, position: tuple[int, int]) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
-    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | None:
+    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | None:
         return self.boss if self.boss and self.boss.position == position else None
 
     def boss_ray(self) -> tuple[tuple[int, int], ...]:
@@ -446,15 +457,19 @@ class ArenaEnv:
                 actions.append(Action(f"dash_{direction}"))
             bow_distance = self._ranged_target_distance(direction, self.config.bow_range)
             pistol_distance = self._ranged_target_distance(direction, self.config.pistol_range)
-            if self.player.loadout.bow and self.player.loadout.arrows and bow_distance and bow_distance > 1:
+            silenced = (isinstance(self.boss, MirrorSeraph) and self.boss.silence_rounds and
+                        self._distance(self.player.position, self.boss.position) <= 4)
+            if not silenced and self.player.loadout.bow and self.player.loadout.arrows and bow_distance and bow_distance > 1:
                 ranged.append((bow_distance, Action(f"shoot_bow_{direction}")))
-            if self.player.loadout.pistol and self.player.loadout.energy and pistol_distance and pistol_distance > 1:
+            if not silenced and self.player.loadout.pistol and self.player.loadout.energy and pistol_distance and pistol_distance > 1:
                 ranged.append((pistol_distance, Action(f"shoot_pistol_{direction}")))
         if self.player.medkits and self.player.hp < 100:
             actions.append(Action.HEAL)
         if (not self.player.cooldowns.get("emp", 0) and
-                any(self._distance(self.player.position, enemy.position) <= self.config.emp_radius
-                    for enemy in self.enemies)):
+                (any(self._distance(self.player.position, enemy.position) <= self.config.emp_radius
+                     for enemy in self.enemies) or
+                 isinstance(self.boss, MirrorSeraph) and
+                 self._distance(self.player.position, self.boss.position) <= self.config.emp_radius)):
             actions.append(Action.EMP)
         ranged.sort(key=lambda item: item[0])
         actions.extend(action for _, action in ranged[:max(0, 11 - len(actions))])
@@ -533,6 +548,8 @@ class ArenaEnv:
             if action.value.startswith("move_"):
                 reward -= 3
 
+        if action != Action.WAIT:
+            self.last_non_wait_action = action.value
         self.ap_remaining -= self._action_cost(action)
         if self.player.hp > 0 and self.ap_remaining == 0:
             reward += self._resolve_enemy_intents(events)
@@ -598,7 +615,7 @@ class ArenaEnv:
             events.append("pickup_energy")
         return reward
 
-    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener,
+    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph,
                        amount: int, events: list[str], source: str) -> float:
         if entity is self.player and self.player.invulnerable:
             events.append(f"invulnerable:{source}")
@@ -643,7 +660,7 @@ class ArenaEnv:
         return 20.0 if source in ("attack", "bow", "pistol") else 10.0
 
     def _ray_target(self, origin: tuple[int, int], direction: str,
-                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener, int] | None:
+                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph, int] | None:
         target = origin
         for distance in range(1, range_ + 1):
             target = self.add(target, direction)
@@ -709,6 +726,8 @@ class ArenaEnv:
             return self._resolve_void(boss, events)
         if isinstance(boss, IronGardener):
             return self._resolve_iron(boss, events)
+        if isinstance(boss, MirrorSeraph):
+            return self._resolve_mirror(boss, events)
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if boss.hp <= boss.max_hp * 2 // 3 and boss.exposed_rounds == 1:
@@ -1085,6 +1104,63 @@ class ArenaEnv:
                 events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:6")
         return reward
 
+    def mirror_ray(self) -> tuple[tuple[int, int], ...]:
+        boss = self.boss
+        if not isinstance(boss, MirrorSeraph) or not boss.mirrored_direction:
+            return ()
+        position = boss.position
+        cells = []
+        while True:
+            position = self.add(position, boss.mirrored_direction)
+            if not self.in_bounds(position) or position in self.walls:
+                break
+            cells.append(position)
+            if position in self.mirror_locks:
+                break
+        return tuple(cells)
+
+    def _resolve_mirror(self, boss: MirrorSeraph, events: list[str]) -> float:
+        if boss.silence_rounds:
+            boss.silence_rounds -= 1
+        if boss.exposed_rounds:
+            boss.exposed_rounds -= 1
+            if not boss.exposed_rounds:
+                boss.broken_locks.clear()
+                events.append("boss_shield_restored")
+            return 0.0
+        if boss.copied_action is None:
+            action = self.last_non_wait_action or "move_n"
+            boss.copied_action = action
+            direction = action[-1] if action[-1] in "nsew" else None
+            boss.mirrored_direction = {"e": "w", "w": "e"}.get(direction, direction)
+            path = self.mirror_ray()
+            boss.target = path[-1] if path else None
+            events.append(f"mirror_aim:{action}:{boss.mirrored_direction or '-'}")
+            return 0.0
+        action = boss.copied_action
+        path = self.mirror_ray()
+        reward = 0.0
+        if action == "emp":
+            boss.silence_rounds = 1
+            events.append("mirror_silence")
+        elif action == "heal":
+            events.append("mirror_heal_echo")
+        elif path:
+            target = path[-1]
+            events.append(f"mirror_shard:{action}:{target[0]}:{target[1]}")
+            if target in self.mirror_locks and target not in boss.broken_locks:
+                boss.broken_locks.add(target)
+                reward += 15
+                events.append(f"mirror_lock_break:{len(boss.broken_locks)}")
+                if len(boss.broken_locks) == len(self.mirror_locks):
+                    boss.exposed_rounds = 4
+                    events.append("boss_shield_break")
+            elif self.player.position in path:
+                damage = boss.dash_damage if action.startswith("dash_") else boss.shard_damage
+                reward += self._damage_entity(self.player, damage, events, "mirror_shard")
+        boss.copied_action = boss.mirrored_direction = boss.target = None
+        return reward
+
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
         destination = self.add(enemy.position, direction)
         events.append(f"shove:{direction}")
@@ -1370,6 +1446,12 @@ class ArenaEnv:
                     threats.append(("iron_gardener/flame", self.boss.flame_damage))
             elif self.boss.attack_kind == "thorn" and self._distance(position, self.boss.target) <= 1:
                 threats.append(("iron_gardener/thorn", self.boss.thorn_damage))
+        if isinstance(self.boss, MirrorSeraph) and self.boss.copied_action and position in self.mirror_ray():
+            path = self.mirror_ray()
+            if path[-1] not in self.mirror_locks or path[-1] in self.boss.broken_locks:
+                damage = (self.boss.dash_damage if self.boss.copied_action.startswith("dash_")
+                          else self.boss.shard_damage)
+                threats.append(("mirror_seraph/shard", damage))
         for enemy in self.enemies:
             intent = enemy.intent
             if not intent or intent.countdown > 1:
@@ -1416,6 +1498,7 @@ class ArenaEnv:
             "position": self.player.position,
             "previous_position": self.previous_player_position,
             "last_action": self.last_action,
+            "last_non_wait_action": self.last_non_wait_action,
             "medkits_carried": self.player.medkits,
             "loadout": (self.player.loadout.bow, self.player.loadout.pistol,
                         self.player.loadout.arrows, self.player.loadout.energy),
@@ -1439,7 +1522,10 @@ class ArenaEnv:
                       self.boss.target, self.boss.attacks) if isinstance(self.boss, VoidAngler) else
                      ("iron", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.refluxed_roots)), self.boss.attack_kind,
-                      self.boss.target, self.boss.attacks) if self.boss else None),
+                      self.boss.target, self.boss.attacks) if isinstance(self.boss, IronGardener) else
+                     ("mirror", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
+                      tuple(sorted(self.boss.broken_locks)), self.boss.copied_action,
+                      self.boss.mirrored_direction, self.boss.target) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
             "coolant_valves": tuple(sorted(self.coolant_valves)),
             "grounding_pylons": tuple(sorted(self.grounding_pylons)),
@@ -1447,6 +1533,7 @@ class ArenaEnv:
             "time_anchors": tuple(sorted(self.time_anchors)),
             "gravity_nodes": tuple(sorted(self.gravity_nodes)),
             "root_plates": tuple(sorted(self.root_plates)),
+            "mirror_locks": tuple(sorted(self.mirror_locks)),
             "vine_seeds": tuple(sorted(self.vine_seeds.items())),
             "vine_walls": tuple(sorted(self.vine_walls)),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,

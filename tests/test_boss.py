@@ -548,5 +548,68 @@ class IronBossTests(unittest.TestCase):
             self.assertIn("boss_defeated", events)
 
 
+class MirrorBossTests(unittest.TestCase):
+    def test_delayed_mirror_warning_and_lock(self):
+        env = ArenaEnv(campaign_config(70))
+        self.assertEqual(env.mirror_locks, {(6, 6), (14, 6), (10, 11)})
+        self.assertTrue((env.mirror_locks | env.medkits | env.energy_cells) <= env._reachable_cells())
+        self.assertIn("Boss mirror", encode_state(env))
+        env.round = 3
+        env.step("wait")
+        result = env.step("move_e")
+        self.assertIn("mirror_aim:move_e:w", result.events)
+        self.assertEqual(env.mirror_ray(), ((9, 6), (8, 6), (7, 6), (6, 6)))
+        self.assertNotIn(("mirror_seraph/shard", 18), env.imminent_threats((8, 6)))
+        env.step("wait")
+        result = env.step("wait")
+        self.assertIn("mirror_lock_break:1", result.events)
+        self.assertEqual(env.boss.broken_locks, {(6, 6)})
+
+    def test_used_lock_allows_danger_and_emp_echo_is_local(self):
+        env = ArenaEnv(campaign_config(70))
+        env.round = 3
+        env.boss.broken_locks.add((6, 6))
+        env.boss.copied_action = "dash_e"
+        env.boss.mirrored_direction = "w"
+        env.player.position = (8, 6)
+        self.assertIn(("mirror_seraph/shard", 26), env.imminent_threats())
+        env.step("wait")
+        result = env.step("wait")
+        self.assertIn("damage:mirror_shard:26", result.events)
+        env.player.position = (10, 9)
+        self.assertIn(Action.SHOOT_PISTOL_N, env.legal_actions())
+        env.boss.copied_action = "emp"
+        env.boss.mirrored_direction = None
+        env.step("wait")
+        result = env.step("wait")
+        self.assertIn("mirror_silence", result.events)
+        self.assertEqual(env.boss.silence_rounds, 1)
+        self.assertNotIn(Action.SHOOT_PISTOL_N, env.legal_actions())
+        env.player.position = (10, 14)
+        env.player.hp = 50
+        env.player.medkits = 1
+        env.boss.copied_action = "heal"
+        env.boss.mirrored_direction = None
+        env.step("wait")
+        result = env.step("wait")
+        self.assertIn("mirror_heal_echo", result.events)
+        self.assertEqual(env.player.medkits, 1)
+
+    def test_default_hybrid_and_rule_finish_without_damage(self):
+        for rule in (False, True):
+            env, agent = ArenaEnv(campaign_config(70)), RuleAgent()
+            events = []
+            for _ in range(120):
+                if env.done:
+                    break
+                action = (agent.act(env) if rule else
+                          select_action({action.value: 1.0 for action in env.legal_actions()}, env, "hybrid")[0])
+                events.extend(env.step(action).events)
+            self.assertTrue(env.done)
+            self.assertEqual(env.player.hp, 100)
+            self.assertEqual(events.count("boss_shield_break"), 2)
+            self.assertIn("boss_defeated", events)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, PrismWarden, StormChoir, VoidAngler
+from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, StormChoir, VoidAngler
 
 
 def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
@@ -109,7 +109,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
-    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener)):
+    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph)):
         boss = env.boss
         if boss.exposed_rounds:
             shots = {action for action in safest if action.startswith("shoot_")}
@@ -118,7 +118,19 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             strikes = {action for action in safest if action.startswith("attack_")}
             if strikes:
                 return max(sorted(strikes), key=probabilities.__getitem__), "boss_tactics"
-            targets = {(boss.position[0], y) for y in range(6, 17)} - env.walls
+            targets = ({(boss.position[0], y) for y in range(7, 15)} if isinstance(boss, MirrorSeraph)
+                       else {(boss.position[0], y) for y in range(6, 17)}) - env.walls
+        elif isinstance(boss, MirrorSeraph):
+            if boss.copied_action is None:
+                remaining = env.mirror_locks - boss.broken_locks
+                direction = ({(6, 6): "e", (14, 6): "w", (10, 11): "s"}[min(remaining)]
+                             if remaining else "n")
+                action = f"move_{direction}"
+                if env.ap_remaining == 1 and action in safest:
+                    return action, "boss_tactics"
+                if env.ap_remaining == 2 and "wait" in safest and action in probabilities:
+                    return "wait", "boss_tactics"
+            targets = {(10, y) for y in range(12, 15)} - env.walls
         elif isinstance(boss, PrismWarden):
             targets = env.prism_baits()
             if boss.target and env.boss_ray() and env.boss_ray()[-1] in env.reflectors:

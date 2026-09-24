@@ -88,6 +88,21 @@ class IronGardener:
     flame_damage: int = 22
     thorn_damage: int = 18
 
+
+@dataclass
+class MirrorSeraph:
+    position: tuple[int, int] = (10, 6)
+    hp: int = 168
+    max_hp: int = 168
+    exposed_rounds: int = 0
+    broken_locks: set[tuple[int, int]] = field(default_factory=set)
+    copied_action: str | None = None
+    mirrored_direction: str | None = None
+    target: tuple[int, int] | None = None
+    shard_damage: int = 18
+    dash_damage: int = 26
+    silence_rounds: int = 0
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start

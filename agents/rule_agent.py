@@ -1,6 +1,6 @@
 from arena.entities import Action
 from arena.env import ArenaEnv
-from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, PrismWarden, VoidAngler
+from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, VoidAngler
 from nanojev_adapter.policy import select_action
 
 
@@ -8,7 +8,7 @@ class RuleAgent:
     name = "rule"
 
     def act(self, env: ArenaEnv) -> Action:
-        if isinstance(env.boss, (ChronoMantis, VoidAngler, IronGardener)):
+        if isinstance(env.boss, (ChronoMantis, VoidAngler, IronGardener, MirrorSeraph)):
             actions = {action.value: 1.0 for action in env.legal_actions()}
             choice, _ = select_action(actions, env, "hybrid")
             return Action(choice)

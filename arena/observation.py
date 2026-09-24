@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, StormChoir, VoidAngler
+from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, StormChoir, VoidAngler
 
 
 ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
@@ -101,6 +101,12 @@ def encode_state(env: ArenaEnv) -> str:
                 f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
                 f"roots={sorted(env.root_plates - {(x, 12) for x in env.boss.refluxed_roots})} "
                 f"flame{env.boss.flame_damage}/thorn{env.boss.thorn_damage}.")
+    elif isinstance(env.boss, MirrorSeraph):
+        boss = (f" Boss mirror@{env.boss.position} hp={env.boss.hp} "
+                f"locks={sorted(env.mirror_locks - env.boss.broken_locks)} "
+                f"exposed={env.boss.exposed_rounds} copy={env.boss.copied_action or '-'} "
+                f"mirror_dir={env.boss.mirrored_direction or '-'} target={env.boss.target or '-'} "
+                f"shard{env.boss.shard_damage}/dash{env.boss.dash_damage}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
