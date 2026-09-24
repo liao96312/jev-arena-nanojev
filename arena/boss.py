@@ -117,6 +117,20 @@ class SiegeLeviathan:
     shots: int = 0
     rail_damage: int = 36
 
+
+@dataclass
+class NullWeaver:
+    position: tuple[int, int] = (10, 5)
+    hp: int = 168
+    max_hp: int = 168
+    exposed_rounds: int = 0
+    node_index: int = 0
+    blocked_kind: str | None = None
+    erase_targets: set[tuple[int, int]] = field(default_factory=set)
+    erase_countdown: int = 0
+    cycles: int = 0
+    fracture_damage: int = 20
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start

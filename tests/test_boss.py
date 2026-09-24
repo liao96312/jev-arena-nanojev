@@ -614,7 +614,7 @@ class MirrorBossTests(unittest.TestCase):
 class SiegeBossTests(unittest.TestCase):
     def test_boss_rooms_and_supplies_are_distinct(self):
         rooms, supplies = [], []
-        for level in range(10, 81, 10):
+        for level in range(10, 91, 10):
             env = ArenaEnv(campaign_config(level))
             rooms.append(frozenset(env.walls))
             supplies.append((len(env.medkits), len(env.energy_cells),
@@ -623,8 +623,8 @@ class SiegeBossTests(unittest.TestCase):
             items = (env.medkits | env.energy_cells | env.arrow_bundles |
                      env.bow_pickups | env.pistol_pickups)
             self.assertTrue(items <= env._reachable_cells(), level)
-        self.assertEqual(len(set(rooms)), 8)
-        self.assertEqual(len(set(supplies)), 8)
+        self.assertEqual(len(set(rooms)), 9)
+        self.assertEqual(len(set(supplies)), 9)
 
     def test_two_round_rail_warning_cover_and_rebuild(self):
         env = ArenaEnv(campaign_config(80))
@@ -674,6 +674,61 @@ class SiegeBossTests(unittest.TestCase):
             env, agent = ArenaEnv(campaign_config(80)), RuleAgent()
             events = []
             for _ in range(200):
+                if env.done:
+                    break
+                action = (agent.act(env) if rule else
+                          select_action({action.value: 1.0 for action in env.legal_actions()}, env, "hybrid")[0])
+                events.extend(env.step(action).events)
+            self.assertTrue(env.done)
+            self.assertEqual(env.player.hp, 100)
+            self.assertEqual(events.count("boss_shield_break"), 2)
+            self.assertIn("boss_defeated", events)
+
+
+class NullBossTests(unittest.TestCase):
+    def test_numbered_nodes_wrong_order_and_reverse_write(self):
+        env = ArenaEnv(campaign_config(90))
+        self.assertEqual(len(env.null_nodes), 4)
+        env.player.position = env.null_nodes[0]
+        events = []
+        env._collect(events)
+        self.assertEqual(env.boss.node_index, 1)
+        env.player.position = env.null_nodes[2]
+        env._collect(events)
+        self.assertIn("null_node_reset", events)
+        self.assertEqual(env.boss.node_index, 0)
+        for node in env.null_nodes:
+            env.player.position = node
+            env._collect(events)
+        self.assertIn("null_reverse_write", events)
+        self.assertEqual(env.boss.exposed_rounds, 6)
+        self.assertFalse(env.null_void)
+
+    def test_action_lock_and_two_round_floor_warning(self):
+        env = ArenaEnv(campaign_config(90))
+        env.player.position = (10, 15)
+        events = []
+        env._resolve_null(env.boss, events)
+        self.assertEqual(env.boss.blocked_kind, "move")
+        self.assertEqual(env.boss.erase_countdown, 2)
+        self.assertNotIn(Action.MOVE_W, env.legal_actions())
+        self.assertIn(Action.DASH_W, env.legal_actions())
+        self.assertFalse(env.null_void)
+        env._resolve_null(env.boss, events)
+        self.assertEqual(env.boss.erase_countdown, 1)
+        self.assertFalse(env.null_void)
+        env._resolve_null(env.boss, events)
+        self.assertTrue(env.null_void)
+        self.assertIn("null_fracture:3", events)
+        env._resolve_null(env.boss, events)
+        self.assertFalse(env.null_void)
+        self.assertIn("null_floor_restore", events)
+
+    def test_default_hybrid_and_rule_finish_without_damage(self):
+        for rule in (False, True):
+            env, agent = ArenaEnv(campaign_config(90)), RuleAgent()
+            events = []
+            for _ in range(160):
                 if env.done:
                     break
                 action = (agent.act(env) if rule else

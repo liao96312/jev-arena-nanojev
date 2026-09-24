@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
+from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
 
 
 def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
@@ -10,8 +10,10 @@ def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> se
         if action.startswith(("move_", "dash_")):
             target = env.add(env.player.position, action[-1])
             moves[action] = env.add(target, action[-1]) if action.startswith("dash_") else target
-    blocked = (set(env.walls) | set(env.pits) | set(env.barrels) |
+    blocked = (set(env.walls) | set(env.pits) | set(env.barrels) | set(env.null_void) |
                set(env.rail_covers.values()) | {enemy.position for enemy in env.enemies})
+    if isinstance(env.boss, NullWeaver) and not env.boss.exposed_rounds and targets is not None:
+        blocked |= set(env.null_nodes) - set(targets)
     if targets is None:
         targets = (env.medkits if env.player.hp <= 60 and env.medkits else
                    ((env.bow_pickups if not env.player.loadout.bow else set()) |
@@ -67,6 +69,16 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
                              simulation.damage_taken - env.damage_taken + pending)
     lowest_risk = min(risks.values())
     safest = {action for action, risk in risks.items() if risk == lowest_risk}
+    if mode == "hybrid" and isinstance(env.boss, NullWeaver) and not env.boss.exposed_rounds:
+        wrong_nodes = set(env.null_nodes) - {env.null_nodes[env.boss.node_index]}
+        def landing(action: str):
+            if not action.startswith(("move_", "dash_")):
+                return None
+            target = env.add(env.player.position, action[-1])
+            return env.add(target, action[-1]) if action.startswith("dash_") else target
+        safe_nodes = {action for action in safest if landing(action) not in wrong_nodes}
+        if safe_nodes:
+            safest = safe_nodes
     if mode == "hybrid" and env.player.hp <= 50 and "heal" in safest:
         return "heal", "survival_heal"
     safe_non_backtracking = [action for action in probabilities if action.startswith("move_") and
@@ -110,7 +122,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
-    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan)):
+    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan, NullWeaver)):
         boss = env.boss
         if boss.exposed_rounds:
             shots = {action for action in safest if action.startswith("shoot_")}
@@ -119,9 +131,11 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             strikes = {action for action in safest if action.startswith("attack_")}
             if strikes:
                 return max(sorted(strikes), key=probabilities.__getitem__), "boss_tactics"
-            targets = ({(boss.position[0], y) for y in range(7, 14)} if isinstance(boss, SiegeLeviathan) else
+            targets = ({(boss.position[0], y) for y in range(7, 14)} if isinstance(boss, (SiegeLeviathan, NullWeaver)) else
                        {(boss.position[0], y) for y in range(7, 15)} if isinstance(boss, MirrorSeraph)
                        else {(boss.position[0], y) for y in range(6, 17)}) - env.walls
+        elif isinstance(boss, NullWeaver):
+            targets = {env.null_nodes[boss.node_index]}
         elif isinstance(boss, SiegeLeviathan):
             targets = {(cover[0], cover[1] + 1) for cover in env.rail_covers.values()
                        if (cover[0], 7) in env.rail_locks - boss.broken_locks}

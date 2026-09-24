@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, ENEMY_SPEED_LEVEL, Action,
                        Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout)
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler, ray_cells
+from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler, ray_cells
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class ArenaConfig:
 def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
-    if level in (10, 20, 30, 40, 50, 60, 70, 80):
+    if level in (10, 20, 30, 40, 50, 60, 70, 80, 90):
         return ArenaConfig(difficulty_level=level, max_ticks=300, walls=0, enemies=0, gems=0,
                            fires=0, spikes=0, pits=0, barrels=0, medkits=0,
                            enemy_hp_bonus=level - 1, action_points=2, spawn_protection_rounds=2,
@@ -144,7 +144,7 @@ class ArenaEnv:
         raise RuntimeError("could not generate a playable map after 20 attempts")
 
     def _generate_map(self) -> None:
-        self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | None = None
+        self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | NullWeaver | None = None
         self.reflectors: set[tuple[int, int]] = set()
         self.breakable_walls: set[tuple[int, int]] = set()
         self.coolant_valves: set[tuple[int, int]] = set()
@@ -157,11 +157,13 @@ class ArenaEnv:
         self.rail_locks: set[tuple[int, int]] = set()
         self.rail_covers: dict[tuple[int, int], tuple[int, int]] = {}
         self.rail_rebuilds: dict[tuple[int, int], int] = {}
+        self.null_nodes: tuple[tuple[int, int], ...] = ()
+        self.null_void: set[tuple[int, int]] = set()
         self.vine_seeds: dict[tuple[int, int], int] = {}
         self.vine_walls: set[tuple[int, int]] = set()
         self.forge_floor: set[tuple[int, int]] = set()
         self.furnace_burns: dict[tuple[int, int], int] = {}
-        if self.config.difficulty_level in (10, 20, 30, 40, 50, 60, 70, 80) and self.config.finish_on_all_gems:
+        if self.config.difficulty_level in (10, 20, 30, 40, 50, 60, 70, 80, 90) and self.config.finish_on_all_gems:
             furnace = self.config.difficulty_level == 20
             storm = self.config.difficulty_level == 30
             chrono = self.config.difficulty_level == 40
@@ -169,7 +171,8 @@ class ArenaEnv:
             iron = self.config.difficulty_level == 60
             mirror = self.config.difficulty_level == 70
             siege = self.config.difficulty_level == 80
-            self.player = Player((10, 16 if furnace or storm or chrono or void or iron or mirror or siege else 15), loadout=self.loadout)
+            null = self.config.difficulty_level == 90
+            self.player = Player((10, 16 if furnace or storm or chrono or void or iron or mirror or siege or null else 15), loadout=self.loadout)
             if furnace:
                 self.player.loadout.bow = True
                 self.player.loadout.arrows = max(10, self.player.loadout.arrows)
@@ -208,6 +211,14 @@ class ArenaEnv:
                                        2 if y >= 15 and y <= 17 else 6 if y >= 18 else 1,
                                        15 if y <= 2 else 18 if y <= 5 else
                                        18 if y >= 15 and y <= 17 else 14 if y >= 18 else 19)}
+            elif null:
+                self.player.loadout.pistol = True
+                self.player.loadout.energy = max(24, self.player.loadout.energy)
+                room = {(x, y) for y in range(20)
+                        for x in range(6 if y <= 1 else 3 if y <= 4 else
+                                       2 if y >= 16 and y <= 17 else 5 if y >= 18 else 0,
+                                       14 if y <= 1 else 17 if y <= 4 else
+                                       18 if y >= 16 and y <= 17 else 15 if y >= 18 else 20)}
             else:
                 self.player.loadout.pistol = True
                 self.player.loadout.energy = max(12, self.player.loadout.energy)
@@ -281,7 +292,7 @@ class ArenaEnv:
                 self.arrow_bundles = set()
                 self.mirror_locks = {(6, 6), (14, 6), (10, 11)}
                 self.boss = MirrorSeraph()
-            else:
+            elif siege:
                 self.walls |= {(5, 8), (15, 8), (4, 12), (16, 12), (6, 15), (14, 15)}
                 self.pits = {(3, 9), (17, 9), (4, 16), (16, 16)}
                 self.medkits, self.energy_cells = {(5, 16), (15, 16), (10, 17)}, {(10, 14)}
@@ -290,6 +301,15 @@ class ArenaEnv:
                 self.rail_locks = {(x, 7) for x in (7, 8, 12, 13)}
                 self.rail_covers = {origin: origin for origin in ((7, 11), (10, 13), (13, 11))}
                 self.boss = SiegeLeviathan()
+            else:
+                self.walls |= {(4, 8), (16, 8), (7, 9), (13, 9),
+                               (5, 13), (15, 13), (8, 16), (12, 16)}
+                self.pits = {(3, 10), (17, 10), (4, 15), (16, 15)}
+                self.medkits, self.energy_cells = {(5, 16), (15, 16)}, {(7, 15), (10, 14), (13, 15)}
+                self.bow_pickups, self.pistol_pickups = {(4, 12)}, set()
+                self.arrow_bundles = {(16, 12)}
+                self.null_nodes = ((5, 11), (15, 11), (6, 14), (11, 10))
+                self.boss = NullWeaver()
             return
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
@@ -329,7 +349,8 @@ class ArenaEnv:
         self._ensure_pickups_reachable()
 
     def _reachable_cells(self) -> set[tuple[int, int]]:
-        blocked = self.walls | self.fires | self.spikes | self.pits | self.barrels | set(self.rail_covers.values())
+        blocked = (self.walls | self.fires | self.spikes | self.pits | self.barrels |
+                   set(self.rail_covers.values()) | self.null_void)
         reachable = {self.player.position}
         frontier = [self.player.position]
         while frontier:
@@ -377,7 +398,7 @@ class ArenaEnv:
     def enemy_at(self, position: tuple[int, int]) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
-    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | None:
+    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | NullWeaver | None:
         return self.boss if self.boss and self.boss.position == position else None
 
     def boss_ray(self) -> tuple[tuple[int, int], ...]:
@@ -469,6 +490,7 @@ class ArenaEnv:
             target = self.add(self.player.position, direction)
             if (self.in_bounds(target) and target not in self.walls and target not in self.pits and
                     target not in self.barrels and target not in self.rail_covers.values() and
+                    target not in self.null_void and
                     not self.enemy_at(target) and not self.boss_at(target)):
                 actions.append(Action(f"move_{direction}"))
             if self.enemy_at(target) or self.boss_at(target) or target in self.barrels:
@@ -487,6 +509,7 @@ class ArenaEnv:
                     self.in_bounds(destination) and target not in self.walls and destination not in self.walls and
                     target not in self.pits and destination not in self.pits and
                     target not in self.barrels and destination not in self.barrels and
+                    target not in self.null_void and destination not in self.null_void and
                     target not in self.rail_covers.values() and destination not in self.rail_covers.values() and
                     not self.enemy_at(target) and not self.enemy_at(destination) and
                     not self.boss_at(target) and not self.boss_at(destination)):
@@ -510,7 +533,12 @@ class ArenaEnv:
         ranged.sort(key=lambda item: item[0])
         actions.extend(action for _, action in ranged[:max(0, 11 - len(actions))])
         actions.append(Action.WAIT)
-        return [action for action in actions if self._action_cost(action) <= self.ap_remaining]
+        locked = self.boss.blocked_kind if isinstance(self.boss, NullWeaver) else None
+        return [action for action in actions if self._action_cost(action) <= self.ap_remaining and
+                not (locked == "move" and action.value.startswith("move_") or
+                     locked == "melee" and action.value.startswith(("attack_", "shove_")) or
+                     locked == "ranged" and action.value.startswith("shoot_") or
+                     locked == "skill" and (action.value.startswith("dash_") or action == Action.EMP))]
 
     def _action_cost(self, action: Action) -> int:
         if action.value.startswith("dash_"):
@@ -654,9 +682,26 @@ class ArenaEnv:
             self.energy_cells.remove(self.player.position)
             self.player.loadout.energy = min(24, self.player.loadout.energy + 6)
             events.append("pickup_energy")
+        if isinstance(self.boss, NullWeaver) and not self.boss.exposed_rounds and self.player.position in self.null_nodes:
+            expected = self.null_nodes[self.boss.node_index]
+            if self.player.position == expected:
+                self.boss.node_index += 1
+                reward += 15
+                events.append(f"null_node:{self.boss.node_index}")
+                if self.boss.node_index == len(self.null_nodes):
+                    self.boss.exposed_rounds = 6
+                    self.boss.blocked_kind = None
+                    self.boss.erase_targets.clear()
+                    self.boss.erase_countdown = 0
+                    self.null_void.clear()
+                    events.append("boss_shield_break")
+                    events.append("null_reverse_write")
+            else:
+                self.boss.node_index = 0
+                events.append("null_node_reset")
         return reward
 
-    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan,
+    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | NullWeaver,
                        amount: int, events: list[str], source: str) -> float:
         if entity is self.player and self.player.invulnerable:
             events.append(f"invulnerable:{source}")
@@ -701,7 +746,7 @@ class ArenaEnv:
         return 20.0 if source in ("attack", "bow", "pistol") else 10.0
 
     def _ray_target(self, origin: tuple[int, int], direction: str,
-                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan, int] | None:
+                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | NullWeaver, int] | None:
         target = origin
         for distance in range(1, range_ + 1):
             target = self.add(target, direction)
@@ -771,6 +816,8 @@ class ArenaEnv:
             return self._resolve_mirror(boss, events)
         if isinstance(boss, SiegeLeviathan):
             return self._resolve_siege(boss, events)
+        if isinstance(boss, NullWeaver):
+            return self._resolve_null(boss, events)
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if boss.hp <= boss.max_hp * 2 // 3 and boss.exposed_rounds == 1:
@@ -1283,6 +1330,48 @@ class ArenaEnv:
                     events.append(f"rail_cover_move:{position[0]}:{position[1]}:{x}:{origin[1]}")
         return reward
 
+    def _resolve_null(self, boss: NullWeaver, events: list[str]) -> float:
+        if self.null_void:
+            self.null_void.clear()
+            events.append("null_floor_restore")
+        if boss.exposed_rounds:
+            boss.exposed_rounds -= 1
+            if not boss.exposed_rounds:
+                boss.node_index = 0
+                events.append("boss_shield_restored")
+            return 0.0
+        boss.blocked_kind = ("move", "melee", "ranged", "skill")[boss.cycles % 4]
+        boss.cycles += 1
+        events.append(f"null_block:{boss.blocked_kind}")
+        if not boss.erase_targets:
+            x, y = self.player.position
+            occupied = (self.walls | self.pits | set(self.null_nodes) | self.medkits |
+                        self.energy_cells | self.bow_pickups | self.pistol_pickups |
+                        self.arrow_bundles | self.barrels)
+            boss.erase_targets = {(x + dx, y) for dx in (-1, 0, 1)
+                                  if self.in_bounds((x + dx, y)) and (x + dx, y) not in occupied}
+            boss.erase_countdown = 2
+            events.append(f"null_mark:{y}:2")
+            return 0.0
+        boss.erase_countdown -= 1
+        if boss.erase_countdown:
+            events.append(f"null_countdown:{boss.erase_countdown}")
+            return 0.0
+        self.null_void = set(boss.erase_targets)
+        boss.erase_targets.clear()
+        reward = 0.0
+        if self.player.position in self.null_void:
+            reward += self._damage_entity(self.player, boss.fracture_damage, events, "null_fracture")
+            safe = [self.add(self.player.position, direction) for direction in DIRECTIONS
+                    if self.in_bounds(self.add(self.player.position, direction)) and
+                    self.add(self.player.position, direction) not in self.null_void | self.walls | self.pits and
+                    not self.boss_at(self.add(self.player.position, direction))]
+            if safe:
+                self.player.position = min(safe)
+                events.append(f"null_displace:{self.player.position[0]}:{self.player.position[1]}")
+        events.append(f"null_fracture:{len(self.null_void)}")
+        return reward
+
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
         destination = self.add(enemy.position, direction)
         events.append(f"shove:{direction}")
@@ -1577,6 +1666,9 @@ class ArenaEnv:
         if isinstance(self.boss, SiegeLeviathan) and self.boss.rail_target is not None and self.boss.charge <= 1:
             if self.rail_threatens(position):
                 threats.append(("siege_leviathan/railgun", self.boss.rail_damage))
+        if isinstance(self.boss, NullWeaver) and self.boss.erase_countdown == 1:
+            if position in self.boss.erase_targets:
+                threats.append(("null_weaver/fracture", self.boss.fracture_damage))
         for enemy in self.enemies:
             intent = enemy.intent
             if not intent or intent.countdown > 1:
@@ -1653,7 +1745,11 @@ class ArenaEnv:
                       self.boss.mirrored_direction, self.boss.target) if isinstance(self.boss, MirrorSeraph) else
                      ("siege", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.broken_locks)), self.boss.rail_axis,
-                      self.boss.rail_target, self.boss.charge, self.boss.shots) if self.boss else None),
+                      self.boss.rail_target, self.boss.charge, self.boss.shots) if isinstance(self.boss, SiegeLeviathan) else
+                     ("null", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
+                      self.boss.node_index, self.boss.blocked_kind,
+                      tuple(sorted(self.boss.erase_targets)), self.boss.erase_countdown,
+                      self.boss.cycles) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
             "coolant_valves": tuple(sorted(self.coolant_valves)),
             "grounding_pylons": tuple(sorted(self.grounding_pylons)),
@@ -1665,6 +1761,8 @@ class ArenaEnv:
             "rail_locks": tuple(sorted(self.rail_locks)),
             "rail_covers": tuple(sorted(self.rail_covers.items())),
             "rail_rebuilds": tuple(sorted(self.rail_rebuilds.items())),
+            "null_nodes": self.null_nodes,
+            "null_void": tuple(sorted(self.null_void)),
             "vine_seeds": tuple(sorted(self.vine_seeds.items())),
             "vine_walls": tuple(sorted(self.vine_walls)),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,

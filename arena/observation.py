@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, SiegeLeviathan, StormChoir, VoidAngler
+from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, SiegeLeviathan, StormChoir, VoidAngler
 
 
 ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
@@ -114,6 +114,12 @@ def encode_state(env: ArenaEnv) -> str:
                 f"{env.boss.rail_target if env.boss.rail_target is not None else '-'} "
                 f"charge={env.boss.charge} covers={sorted(env.rail_covers.values())} "
                 f"rebuild={sorted(env.rail_rebuilds.items())} dmg={env.boss.rail_damage}.")
+    elif isinstance(env.boss, NullWeaver):
+        boss = (f" Boss null@{env.boss.position} hp={env.boss.hp} "
+                f"nodes={env.boss.node_index}/4 order={env.null_nodes} "
+                f"exposed={env.boss.exposed_rounds} blocked={env.boss.blocked_kind or '-'} "
+                f"erase={sorted(env.boss.erase_targets)} countdown={env.boss.erase_countdown} "
+                f"void={sorted(env.null_void)} fracture={env.boss.fracture_damage}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
