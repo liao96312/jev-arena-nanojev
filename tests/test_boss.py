@@ -605,6 +605,37 @@ class IronBossTests(unittest.TestCase):
 
 
 class MirrorBossTests(unittest.TestCase):
+    def test_echo_hits_even_when_mirror_ray_breaks_a_lock(self):
+        env = ArenaEnv(campaign_config(70))
+        env.player.position = (10, 14)
+        env.last_non_wait_action = "move_e"
+        events = []
+        env._resolve_mirror(env.boss, events)
+        self.assertEqual(env.boss.echo_target, (10, 14))
+        self.assertIn("mirror_echo_aim:10:14", events)
+        self.assertIn(("mirror_seraph/echo", 14), env.imminent_threats((11, 14)))
+        events.clear()
+        env._resolve_mirror(env.boss, events)
+        self.assertIn("mirror_lock_break:1", events)
+        self.assertIn("damage:mirror_echo:14", events)
+        self.assertEqual(env.player.hp, 86)
+        self.assertIsNone(env.boss.echo_target)
+
+    def test_echo_aim_is_locked_and_can_be_dodged(self):
+        env = ArenaEnv(campaign_config(70))
+        env.player.position = (10, 14)
+        env.last_non_wait_action = "move_e"
+        events = []
+        env._resolve_mirror(env.boss, events)
+        env.player.position = (12, 14)
+        self.assertEqual(env.boss.echo_target, (10, 14))
+        self.assertNotIn(("mirror_seraph/echo", 14), env.imminent_threats())
+        events.clear()
+        env._resolve_mirror(env.boss, events)
+        self.assertIn("mirror_echo:10:14", events)
+        self.assertFalse(any(event.startswith("damage:mirror_echo:") for event in events))
+        self.assertEqual(env.player.hp, 100)
+
     def test_delayed_mirror_warning_and_lock(self):
         env = ArenaEnv(campaign_config(70))
         self.assertEqual(env.mirror_locks, {(6, 6), (14, 6), (10, 11)})
@@ -677,7 +708,7 @@ class MirrorBossTests(unittest.TestCase):
                 events.extend(env.step(action).events)
             self.assertTrue(env.done)
             self.assertEqual(env.player.hp, 100)
-            self.assertEqual(events.count("boss_shield_break"), 2)
+            self.assertEqual(events.count("boss_shield_break"), 3)
             self.assertIn("boss_defeated", events)
 
 

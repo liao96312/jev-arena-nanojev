@@ -1296,7 +1296,10 @@ class ArenaEnv:
                 events.append(f"boss_move:{previous[0]}:{previous[1]}:{destination[0]}:{destination[1]}")
             path = self.mirror_ray()
             boss.target = path[-1] if path else None
+            boss.echo_target = self.player.position if direction else None
             events.append(f"mirror_aim:{action}:{boss.mirrored_direction or '-'}")
+            if boss.echo_target:
+                events.append(f"mirror_echo_aim:{boss.echo_target[0]}:{boss.echo_target[1]}")
             return 0.0
         action = boss.copied_action
         path = self.mirror_ray()
@@ -1319,7 +1322,12 @@ class ArenaEnv:
             elif self.player.position in path:
                 damage = boss.dash_damage if action.startswith("dash_") else boss.shard_damage
                 reward += self._damage_entity(self.player, damage, events, "mirror_shard")
+        if boss.echo_target:
+            events.append(f"mirror_echo:{boss.echo_target[0]}:{boss.echo_target[1]}")
+            if self._distance(self.player.position, boss.echo_target) <= 1:
+                reward += self._damage_entity(self.player, boss.echo_damage, events, "mirror_echo")
         boss.copied_action = boss.mirrored_direction = boss.target = None
+        boss.echo_target = None
         return reward
 
     def rail_path(self) -> tuple[tuple[int, int], ...]:
@@ -1943,6 +1951,9 @@ class ArenaEnv:
                 damage = (self.boss.dash_damage if self.boss.copied_action.startswith("dash_")
                           else self.boss.shard_damage)
                 threats.append(("mirror_seraph/shard", damage))
+        if (isinstance(self.boss, MirrorSeraph) and self.boss.copied_action and
+                self.boss.echo_target and self._distance(position, self.boss.echo_target) <= 1):
+            threats.append(("mirror_seraph/echo", self.boss.echo_damage))
         if isinstance(self.boss, SiegeLeviathan) and self.boss.rail_target is not None and self.boss.charge <= 1:
             if self.rail_threatens(position):
                 threats.append(("siege_leviathan/railgun", self.boss.rail_damage))
@@ -2033,7 +2044,8 @@ class ArenaEnv:
                       self.boss.target, self.boss.attacks) if isinstance(self.boss, IronGardener) else
                      ("mirror", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.broken_locks)), self.boss.copied_action,
-                      self.boss.mirrored_direction, self.boss.target) if isinstance(self.boss, MirrorSeraph) else
+                      self.boss.mirrored_direction, self.boss.target,
+                      self.boss.echo_target) if isinstance(self.boss, MirrorSeraph) else
                      ("siege", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.broken_locks)), self.boss.rail_axis,
                       self.boss.rail_target, self.boss.charge, self.boss.shots) if isinstance(self.boss, SiegeLeviathan) else

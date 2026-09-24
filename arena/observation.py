@@ -107,7 +107,8 @@ def encode_state(env: ArenaEnv) -> str:
                 f"locks={sorted(env.mirror_locks - env.boss.broken_locks)} "
                 f"exposed={env.boss.exposed_rounds} copy={env.boss.copied_action or '-'} "
                 f"mirror_dir={env.boss.mirrored_direction or '-'} target={env.boss.target or '-'} "
-                f"shard{env.boss.shard_damage}/dash{env.boss.dash_damage}.")
+                f"echo={env.boss.echo_target or '-'} "
+                f"shard{env.boss.shard_damage}/dash{env.boss.dash_damage}/echo{env.boss.echo_damage}.")
     elif isinstance(env.boss, SiegeLeviathan):
         boss = (f" Boss siege@{env.boss.position} hp={env.boss.hp} "
                 f"locks={sorted(env.rail_locks - env.boss.broken_locks)} "

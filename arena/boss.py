@@ -100,8 +100,10 @@ class MirrorSeraph:
     copied_action: str | None = None
     mirrored_direction: str | None = None
     target: tuple[int, int] | None = None
+    echo_target: tuple[int, int] | None = None
     shard_damage: int = 18
     dash_damage: int = 26
+    echo_damage: int = 14
     silence_rounds: int = 0
 
 

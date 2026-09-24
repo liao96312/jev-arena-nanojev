@@ -431,6 +431,10 @@ class ArenaRenderer:
                 x, y = (int(value) for value in event.split(":")[1:])
                 self._sprite((x, y), "effect_boss_temporal_slash")
                 continue
+            if event.startswith("mirror_echo:"):
+                x, y = (int(value) for value in event.split(":")[1:])
+                self._sprite((x, y), "effect_boss_mirror_shards")
+                continue
             if not event.startswith("archer_shot:"):
                 continue
             parts = event.split(":")
@@ -507,6 +511,9 @@ class ArenaRenderer:
                     mirrored = directions.get(env.boss.mirrored_direction, "—")
                     self._text(f"正在复制你的{original}动作：向{mirrored}发射", left, 335,
                                (255, 235, 253), small=True)
+                    if env.boss.echo_target:
+                        self._text(f"紫色十字下轮爆炸：{env.boss.echo_damage} 伤害", left, 358,
+                                   (251, 167, 242), small=True)
             if isinstance(env.boss, SiegeLeviathan):
                 self._text(f"装甲锁 {len(env.boss.broken_locks)}/4 · 炮击掩体破锁",
                            left, 289, (255, 214, 168), small=True)
@@ -559,7 +566,7 @@ class ArenaRenderer:
         self._text(f"武器：弓 {'未获得' if not loadout.bow else f'{loadout.arrows} 箭'}  "
                    f"手枪 {'未获得' if not loadout.pistol else f'{loadout.energy} 发'}",
                    left, 218, colors["muted"], small=True)
-        y = 365 if env.boss else 245
+        y = 390 if isinstance(env.boss, MirrorSeraph) else 365 if env.boss else 245
         for name, probability in sorted(probabilities.items(), key=lambda item: item[1], reverse=True)[:7 if env.boss else 11]:
             self._text(f"{ACTION_NAMES.get(name, name)}  {probability:>6.1%}", left, y,
                        colors["text"], small=True)
@@ -886,19 +893,31 @@ class ArenaRenderer:
             return
         if isinstance(env.boss, MirrorSeraph):
             path = env.mirror_ray()
-            if not path:
+            if not path and not env.boss.echo_target:
                 return
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
-            locked = path[-1] in env.mirror_locks and path[-1] not in env.boss.broken_locks
-            for x, y in path:
-                self.pg.draw.rect(overlay, (255, 174, 235, 92) if locked else (255, 91, 165, 125),
-                                  (x * self.CELL + 2, y * self.CELL + 2,
-                                   self.CELL - 4, self.CELL - 4), border_radius=5)
-            end = path[-1]
-            self.pg.draw.line(overlay, (255, 235, 253, 210),
-                              ((env.boss.position[0] + .5) * self.CELL,
-                               (env.boss.position[1] + .5) * self.CELL),
-                              ((end[0] + .5) * self.CELL, (end[1] + .5) * self.CELL), 3)
+            if path:
+                locked = path[-1] in env.mirror_locks and path[-1] not in env.boss.broken_locks
+                for x, y in path:
+                    self.pg.draw.rect(overlay, (255, 174, 235, 92) if locked else (255, 91, 165, 125),
+                                      (x * self.CELL + 2, y * self.CELL + 2,
+                                       self.CELL - 4, self.CELL - 4), border_radius=5)
+                end = path[-1]
+                self.pg.draw.line(overlay, (255, 235, 253, 210),
+                                  ((env.boss.position[0] + .5) * self.CELL,
+                                   (env.boss.position[1] + .5) * self.CELL),
+                                  ((end[0] + .5) * self.CELL, (end[1] + .5) * self.CELL), 3)
+            if env.boss.echo_target:
+                x, y = env.boss.echo_target
+                for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
+                    cell = (x + dx, y + dy)
+                    if env.in_bounds(cell):
+                        area = (cell[0] * self.CELL + 2, cell[1] * self.CELL + 2,
+                                self.CELL - 4, self.CELL - 4)
+                        self.pg.draw.rect(overlay, (209, 71, 238, 85), area, border_radius=5)
+                        self.pg.draw.rect(overlay, (251, 177, 255, 210), area, 2, border_radius=5)
+                self.pg.draw.circle(overlay, (255, 223, 255, 240),
+                                    (int((x + .5) * self.CELL), int((y + .5) * self.CELL)), 6, 2)
             self.screen.blit(overlay, (0, 0))
             return
         if isinstance(env.boss, IronGardener):
@@ -1173,6 +1192,8 @@ class ArenaRenderer:
             elif event.startswith("iron_thorn:"): labels.append("荆棘爆发！")
             elif event.startswith("mirror_aim:"): labels.append("镜像动作已预告：注意实际方向！")
             elif event.startswith("mirror_shard:"): labels.append("镜像碎片射线！")
+            elif event.startswith("mirror_echo_aim:"): labels.append("紫色镜片十字锁定旧位置：下一轮离开！")
+            elif event.startswith("mirror_echo:"): labels.append("镜片十字爆裂！")
             elif event.startswith("mirror_lock_break:"): labels.append("镜锁被反射碎片击碎！")
             elif event == "mirror_silence": labels.append("镜像 EMP：局部沉默一回合")
             elif event == "mirror_heal_echo": labels.append("镜像治疗：不消耗玩家药包")
