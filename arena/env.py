@@ -1028,6 +1028,16 @@ class ArenaEnv:
             return 0.0
         if boss.target is None:
             boss.attack_kind = "chain" if boss.attacks % 2 == 0 else "surge"
+            previous = boss.position
+            player_x = self.player.position[0]
+            goal_x = min(12, max(8, player_x + (-2 if boss.attack_kind == "chain" else 2)))
+            speed = 2 if boss.attack_kind == "chain" else 3
+            x = boss.position[0] + max(-speed, min(speed, goal_x - boss.position[0]))
+            destination = (x, 5 if boss.attack_kind == "chain" else 6)
+            if destination != self.player.position:
+                boss.position = destination
+            if boss.position != previous:
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:{boss.position[1]}")
             boss.target = self.player.position
             events.append(f"storm_aim:{boss.attack_kind}:{boss.target[0]}:{boss.target[1]}")
             return 0.0
@@ -1051,11 +1061,6 @@ class ArenaEnv:
                 reward += self._damage_entity(self.player, damage, events, "storm_surge")
         boss.attacks += 1
         boss.target = None
-        if not boss.exposed_rounds:
-            previous = boss.position
-            boss.position = ((10, 11, 9)[boss.attacks % 3], 5)
-            if previous != boss.position:
-                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:5")
         return reward
 
     def _resolve_chrono(self, boss: ChronoMantis, events: list[str]) -> float:
@@ -1077,9 +1082,10 @@ class ArenaEnv:
             launch_x = 12 if self.chrono_landing_x() == 9 else 11
             delta = max(-2, min(2, launch_x - boss.position[0]))
             x = boss.position[0] + delta
-            y = (8 if boss.position[1] == 7 else 7) if not delta else boss.position[1]
+            goal_y = min(9, max(7, self.player.position[1] - 3))
+            y = boss.position[1] + (goal_y > boss.position[1]) - (goal_y < boss.position[1])
             if (x, y) == self.player.position:
-                y = 8 if y == 7 else 7
+                y = boss.position[1]
             boss.position = (x, y)
             boss.moves += 1
             if x != launch_x:
@@ -1096,7 +1102,7 @@ class ArenaEnv:
             events.append(f"chrono_slash:{target[0]}:{target[1]}")
             if self._distance(self.player.position, target) <= 1:
                 reward += self._damage_entity(self.player, boss.slash_damage, events, "chrono_slash")
-            boss.leap_target = (self.chrono_landing_x(), 7)
+            boss.leap_target = self.player.position
             boss.leap_countdown = 2
             boss.phase = "leap"
             events.append(f"chrono_leap_aim:{boss.leap_target[0]}:{boss.leap_target[1]}")
@@ -1104,27 +1110,32 @@ class ArenaEnv:
         if boss.leap_countdown > 1:
             boss.leap_countdown -= 1
             previous = boss.position
-            boss.position = (boss.position[0], 8)
+            boss.position = (boss.position[0], 7 if boss.position[1] >= 8 else 8)
             if previous != boss.position:
-                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:8")
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:{boss.position[1]}")
             events.append(f"chrono_leap_charge:{boss.leap_target[0]}:{boss.leap_target[1]}")
             return 0.0
-        if self.player.position == boss.leap_target:
-            boss.phase = "flank"
-            boss.slash_target = boss.leap_target = None
-            boss.leap_countdown = 0
-            events.append("chrono_leap_cancel")
-            return 0.0
         previous = boss.position
-        boss.position = boss.leap_target
+        target = boss.leap_target
+        occupied = self.player.position == target
+        if occupied:
+            neighbors = (self.add(target, direction) for direction in DIRECTIONS)
+            safe = (cell for cell in neighbors if self.in_bounds(cell) and
+                    cell not in self.walls | self.pits | self.fires | self.spikes and
+                    cell != self.player.position)
+            boss.position = min(safe, key=lambda cell: (self._distance(cell, previous), cell), default=previous)
+        else:
+            boss.position = target
         boss.moves += 1
-        events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:7")
-        events.append(f"chrono_leap:{boss.position[0]}:7")
+        events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:{boss.position[1]}")
+        events.append(f"chrono_leap:{target[0]}:{target[1]}")
         reward = 0.0
-        if self.player.position in self.time_anchors and self.player.position[0] == boss.position[0]:
+        if occupied and target in self.time_anchors:
             boss.exposed_rounds = 4
             events.extend(("chrono_anchor", "chrono_echo_replay", "boss_shield_break"))
             reward += 15
+        elif occupied:
+            reward += self._damage_entity(self.player, boss.leap_damage, events, "chrono_leap")
         elif self.player.position == boss.slash_target:
             reward += self._damage_entity(self.player, boss.echo_damage, events, "chrono_echo")
             events.append(f"chrono_echo:{boss.slash_target[0]}:{boss.slash_target[1]}")
@@ -1908,8 +1919,11 @@ class ArenaEnv:
         if isinstance(self.boss, ChronoMantis):
             if self.boss.phase == "slash" and self._distance(position, self.boss.slash_target) <= 1:
                 threats.append(("chrono_mantis/slash", self.boss.slash_damage))
-            if self.boss.phase == "leap" and position == self.boss.slash_target:
-                threats.append(("chrono_mantis/echo", self.boss.echo_damage))
+            if self.boss.phase == "leap":
+                if position == self.boss.leap_target and position not in self.time_anchors:
+                    threats.append(("chrono_mantis/leap", self.boss.leap_damage))
+                elif position == self.boss.slash_target and position != self.boss.leap_target:
+                    threats.append(("chrono_mantis/echo", self.boss.echo_damage))
         if isinstance(self.boss, VoidAngler) and self.boss.attack_kind == "beam" and self.boss.target:
             if self._distance(position, self.boss.target) <= 1:
                 threats.append(("void_angler/beam", self.boss.beam_damage))

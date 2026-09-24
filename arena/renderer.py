@@ -944,13 +944,14 @@ class ArenaRenderer:
                 color = (255, 105, 138, 125)
             elif boss.phase == "leap" and boss.leap_target:
                 target = boss.leap_target
-                cells = [target, (target[0], 11)]
+                cells = [target]
                 color = (208, 130, 255, 125)
             else:
                 return
             for cell in cells:
                 if env.in_bounds(cell):
-                    self.pg.draw.rect(overlay, color,
+                    tint = (116, 239, 188, 135) if boss.phase == "leap" and cell in env.time_anchors else color
+                    self.pg.draw.rect(overlay, tint,
                                       (cell[0] * self.CELL + 2, cell[1] * self.CELL + 2,
                                        self.CELL - 4, self.CELL - 4), border_radius=5)
             if boss.phase == "leap":
@@ -1137,10 +1138,10 @@ class ArenaRenderer:
             elif event == "chrono_phase_two": labels.append("时序螳螂进入二阶段！")
             elif event == "chrono_anchor_shift": labels.append("时间锚移到后方通道！")
             elif event.startswith("chrono_slash:"): labels.append("时序螳螂近斩！")
-            elif event.startswith("chrono_leap_aim:"): labels.append("跃迁落点已锁定：去对应时间锚！")
+            elif event.startswith("chrono_leap_aim:"): labels.append("跳杀锁定当前位置！离开紫格，或用时间锚反制！")
             elif event.startswith("chrono_leap_charge:"): labels.append("跃迁蓄力：落点不再改变！")
             elif event.startswith("chrono_leap:"): labels.append("时序螳螂跃迁！")
-            elif event == "chrono_leap_cancel": labels.append("落点被占据：跃迁取消！")
+            elif event.startswith("damage:chrono_leap:"): labels.append("跳杀命中！")
             elif event == "chrono_anchor": labels.append("时间锚已启动！")
             elif event == "chrono_echo_replay": labels.append("残影回放击中 Boss！")
             elif event.startswith("void_aim:mine:"): labels.append("引力雷预警：站稳紫色节点吸离装甲！")

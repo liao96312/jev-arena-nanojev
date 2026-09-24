@@ -60,6 +60,7 @@ class ChronoMantis:
     moves: int = 0
     slash_damage: int = 24
     echo_damage: int = 18
+    leap_damage: int = 30
 
 
 @dataclass
