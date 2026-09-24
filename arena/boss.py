@@ -74,6 +74,20 @@ class VoidAngler:
     attacks: int = 0
     beam_damage: int = 22
 
+
+@dataclass
+class IronGardener:
+    position: tuple[int, int] = (10, 6)
+    hp: int = 108
+    max_hp: int = 108
+    exposed_rounds: int = 0
+    refluxed_roots: set[int] = field(default_factory=set)
+    target: tuple[int, int] | None = None
+    attack_kind: str = "flame"
+    attacks: int = 0
+    flame_damage: int = 22
+    thorn_damage: int = 18
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start

@@ -500,5 +500,53 @@ class VoidBossTests(unittest.TestCase):
             self.assertIn("boss_defeated", events)
 
 
+class IronBossTests(unittest.TestCase):
+    def test_seed_growth_flame_counter_and_safe_routes(self):
+        env = ArenaEnv(campaign_config(60))
+        self.assertFalse(env.gems)
+        self.assertEqual(env.root_plates, {(6, 12), (9, 12), (12, 12), (15, 12)})
+        self.assertEqual(len(env.vine_seeds), 4)
+        self.assertTrue((env.root_plates | env.medkits | env.energy_cells) <= env._reachable_cells())
+        self.assertIn("Boss iron", encode_state(env))
+        env.round = 3
+        env.player.position = (9, 12)
+        env.step(Action.WAIT)
+        env.step(Action.WAIT)
+        self.assertEqual(env.vine_seeds[(9, 10)], 1)
+        self.assertNotIn(("iron_gardener/flame", 22), env.imminent_threats())
+        env.step(Action.WAIT)
+        flame = env.step(Action.WAIT)
+        self.assertIn("iron_vine_grow:9:10", flame.events)
+        self.assertIn("iron_vine_burn:9:10", flame.events)
+        self.assertIn("iron_reflux:1", flame.events)
+        self.assertNotIn((9, 10), env.walls)
+        self.assertTrue(env.root_plates <= env._reachable_cells())
+
+    def test_thorn_warning_matches_damage(self):
+        env = ArenaEnv(campaign_config(60))
+        env.round = 3
+        env.boss.attack_kind = "thorn"
+        env.boss.target = env.player.position
+        self.assertIn(("iron_gardener/thorn", 18), env.imminent_threats())
+        env.step(Action.WAIT)
+        result = env.step(Action.WAIT)
+        self.assertIn("damage:iron_thorn:18", result.events)
+
+    def test_default_hybrid_and_rule_finish_without_damage(self):
+        for rule in (False, True):
+            env, agent = ArenaEnv(campaign_config(60)), RuleAgent()
+            events = []
+            for _ in range(120):
+                if env.done:
+                    break
+                action = (agent.act(env) if rule else
+                          select_action({action.value: 1.0 for action in env.legal_actions()}, env, "hybrid")[0])
+                events.extend(env.step(action).events)
+            self.assertTrue(env.done)
+            self.assertEqual(env.player.hp, 100)
+            self.assertEqual(events.count("boss_shield_break"), 2)
+            self.assertIn("boss_defeated", events)
+
+
 if __name__ == "__main__":
     unittest.main()

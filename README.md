@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-124%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-127%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -43,6 +43,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 | 第三只 Boss | 第 30 关风暴合唱环：132 点生命，降至三分之二血量后导电位从中间移到两翼；四柱接地后回灌破盾，二阶段雷爆伤害更高，再用手枪攻击核心 |
 | 第四只 Boss | 第 40 关时序螳螂：168 点生命，横切和预告跃迁；降至三分之二血量后时间锚后移、核心开放时换位，站上对应时间锚使残影回放破盾 |
 | 第五只 Boss | 第 50 关虚空钓手：暗色不规则房间、引力雷与锁定光束交替；在 3 处不同引力节点接雷吸离装甲，再攻击核心 |
+| 第六只 Boss | 第 60 关钢铁园丁：种子两轮长成荆棘墙，焚烧线与荆棘爆发交替；引火烧掉 4 条藤蔓并让热量回流破盾 |
 
 第 10 关 Boss 实机画面（紫色实线与亮格为实际攻击路径，镜柱可反射弹体）：
 
@@ -76,7 +77,13 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 
 ![第 50 关虚空钓手与引力雷预警](assets/screenshots/boss_void_angler.png)
 
-虚空钓手 108 点生命，交替使用引力雷和 22 伤害锁定光束。引力雷从玩家附近选择未耗尽节点，玩家在落点接住 3 次后装甲脱落，核心开放 4 回合；玩家若在雷的牵引范围内被拉动，也不会被直接拖入坑。Boss 房提供手枪、能量弹匣和血包，默认混合策略与规则策略均通过无伤通关测试。第 10～50 关均以击败 Boss 通关；第 60～100 关 Boss 仍是[设计规划](JEV_ARENA_BOSS_ROADMAP.md)。
+虚空钓手 108 点生命，交替使用引力雷和 22 伤害锁定光束。引力雷从玩家附近选择未耗尽节点，玩家在落点接住 3 次后装甲脱落，核心开放 4 回合；玩家若在雷的牵引范围内被拉动，也不会被直接拖入坑。Boss 房提供手枪、能量弹匣和血包，默认混合策略与规则策略均通过无伤通关测试。
+
+第 60 关钢铁园丁实机画面（绿色根盘可引导焚烧线，藤蔓长成后会挡路）：
+
+![第 60 关钢铁园丁与焚烧线预警](assets/screenshots/boss_iron_gardener.png)
+
+钢铁园丁 108 点生命，焚烧线伤害 22，锁定荆棘伤害 18。种子两轮长成可阻路的荆棘墙；玩家引火烧掉 4 条不同藤蔓并站在对应根盘，让热量回流破盾，核心开放 4 回合。Boss 房提供手枪、弹药和血包，默认混合策略与规则策略均无伤通关。第 10～60 关已实装 Boss；第 70～100 关仍是[设计规划](JEV_ARENA_BOSS_ROADMAP.md)。
 
 ### 难度不是简单堆怪
 
@@ -189,7 +196,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **124 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **127 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, StormChoir, VoidAngler
+from .boss import ChronoMantis, FurnaceHydra, IronGardener, StormChoir, VoidAngler
 
 
 ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
@@ -96,6 +96,11 @@ def encode_state(env: ArenaEnv) -> str:
         boss = (f" Boss void@{env.boss.position} hp={env.boss.hp} armor={len(env.boss.drained_nodes)}/3 "
                 f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
                 f"nodes={sorted(env.gravity_nodes - env.boss.drained_nodes)} beam{env.boss.beam_damage}.")
+    elif isinstance(env.boss, IronGardener):
+        boss = (f" Boss iron@{env.boss.position} hp={env.boss.hp} reflux={len(env.boss.refluxed_roots)}/4 "
+                f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
+                f"roots={sorted(env.root_plates - {(x, 12) for x in env.boss.refluxed_roots})} "
+                f"flame{env.boss.flame_damage}/thorn{env.boss.thorn_damage}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "

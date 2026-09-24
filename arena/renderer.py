@@ -5,7 +5,7 @@ from pathlib import Path
 
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
-from arena.boss import ChronoMantis, FurnaceHydra, StormChoir, VoidAngler
+from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, StormChoir, VoidAngler
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
@@ -68,7 +68,10 @@ class ArenaRenderer:
         for y in range(env.config.height):
             for x in range(env.config.width):
                 rect = pg.Rect(x * self.CELL, y * self.CELL, self.CELL, self.CELL)
-                if env.gravity_nodes:
+                if env.root_plates:
+                    pg.draw.rect(self.screen, (22, 37, 28) if (x + y) % 2 else (28, 43, 32), rect)
+                    pg.draw.rect(self.screen, (50, 78, 56), rect, 1)
+                elif env.gravity_nodes:
                     pg.draw.rect(self.screen, (22, 19, 43) if (x + y) % 2 else (28, 22, 50), rect)
                     pg.draw.rect(self.screen, (55, 48, 84), rect, 1)
                 elif env.time_anchors:
@@ -84,6 +87,23 @@ class ArenaRenderer:
                     pg.draw.rect(self.screen, colors["grid"], rect, 1)
         for position in env.walls:
             self._sprite(position, "wall")
+        for x, y in env.vine_walls:
+            center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
+            pg.draw.line(self.screen, (131, 246, 94),
+                         (center[0] - 11, center[1] + 12), (center[0] + 10, center[1] - 12), 4)
+            pg.draw.line(self.screen, (237, 187, 91),
+                         (center[0] - 10, center[1] - 7), (center[0] + 11, center[1] + 7), 3)
+        for x, y in env.vine_seeds:
+            center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
+            pg.draw.circle(self.screen, (155, 245, 112), center, 8, 2)
+            pg.draw.circle(self.screen, (238, 205, 95), center, 3)
+        for position in env.root_plates:
+            used = isinstance(env.boss, IronGardener) and position[0] in env.boss.refluxed_roots
+            center = (position[0] * self.CELL + self.CELL // 2,
+                      position[1] * self.CELL + self.CELL // 2)
+            pg.draw.circle(self.screen, (98, 119, 88) if used else (133, 236, 122), center, 16, 3)
+            pg.draw.line(self.screen, (255, 201, 102),
+                         (center[0] - 8, center[1] + 8), (center[0] + 8, center[1] - 8), 2)
         for x, y in env.breakable_walls:
             center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
             pg.draw.line(self.screen, (255, 155, 218),
@@ -170,12 +190,15 @@ class ArenaRenderer:
             storm = isinstance(env.boss, StormChoir)
             chrono = isinstance(env.boss, ChronoMantis)
             void = isinstance(env.boss, VoidAngler)
-            self._sprite(boss_position, "boss_void_angler" if void else
+            iron = isinstance(env.boss, IronGardener)
+            self._sprite(boss_position, "boss_iron_gardener" if iron else
+                         "boss_void_angler" if void else
                          "boss_chrono_mantis" if chrono else
                          "boss_storm_choir" if storm else
                          "boss_furnace_hydra" if furnace else "boss_prism_warden")
             if "boss_shield_break" in events:
-                self._sprite(boss_position, "effect_boss_gravity_vortex" if void else
+                self._sprite(boss_position, "effect_boss_plasma_thorns" if iron else
+                             "effect_boss_gravity_vortex" if void else
                              "effect_boss_temporal_slash" if chrono else
                              "effect_boss_chain_lightning" if storm else
                              "effect_boss_magma_wave" if furnace else "effect_boss_prism_burst")
@@ -257,6 +280,18 @@ class ArenaRenderer:
                 pg.draw.line(self.screen, (187, 117, 255), start, end, max(2, round(9 * progress)))
                 self._sprite((int(x2), int(y2)), "effect_boss_gravity_vortex")
                 continue
+            if event.startswith("iron_flame:"):
+                x = int(event.split(":")[1])
+                for y in range(7, 17):
+                    if progress >= (y - 7) / 12:
+                        center = (x * self.CELL + self.CELL // 2,
+                                  y * self.CELL + self.CELL // 2)
+                        pg.draw.circle(self.screen, (255, 145, 66), center, 12, 3)
+                continue
+            if event.startswith("iron_thorn:"):
+                _, x, y = event.split(":")
+                self._sprite((int(x), int(y)), "effect_boss_plasma_thorns")
+                continue
             if event.startswith("furnace_wave:"):
                 x = int(event.split(":")[1])
                 width = (0, -1, 1) if isinstance(env.boss, FurnaceHydra) and env.boss.hp <= env.boss.max_hp // 2 else (0,)
@@ -319,6 +354,10 @@ class ArenaRenderer:
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          f"装甲吸离 {len(env.boss.drained_nodes)}/3")
                 label, tint = "虚空钓手", (199, 155, 255)
+            elif isinstance(env.boss, IronGardener):
+                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                         f"热回流 {len(env.boss.refluxed_roots)}/4")
+                label, tint = "钢铁园丁", (169, 234, 139)
             elif isinstance(env.boss, StormChoir):
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          "接地柱 0/4" if env.boss.target is None else
@@ -405,7 +444,8 @@ class ArenaRenderer:
                      "projectile_boss_fireball", "effect_boss_magma_wave", "boss_storm_choir",
                      "effect_boss_chain_lightning", "boss_chrono_mantis",
                      "effect_boss_temporal_slash", "boss_void_angler",
-                     "effect_boss_gravity_vortex"):
+                     "effect_boss_gravity_vortex", "boss_iron_gardener",
+                     "effect_boss_plasma_thorns"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -427,6 +467,8 @@ class ArenaRenderer:
                 limit = round(self.CELL * (3.0 if name == "boss_chrono_mantis" else 2.0))
             elif name in ("boss_void_angler", "effect_boss_gravity_vortex"):
                 limit = round(self.CELL * (3.2 if name == "boss_void_angler" else 2.2))
+            elif name in ("boss_iron_gardener", "effect_boss_plasma_thorns"):
+                limit = round(self.CELL * (3.2 if name == "boss_iron_gardener" else 2.0))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -600,6 +642,29 @@ class ArenaRenderer:
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
     def _boss_telegraph(self, env: ArenaEnv) -> None:
+        if isinstance(env.boss, IronGardener):
+            boss = env.boss
+            if boss.target is None:
+                return
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            if boss.attack_kind == "flame":
+                cells = [(boss.target[0], y) for y in range(8, 17)]
+            else:
+                x, y = boss.target
+                cells = [(x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+            for x, y in cells:
+                if not env.in_bounds((x, y)):
+                    continue
+                safe = (boss.attack_kind == "flame" and (x, y) == boss.target and
+                        env.iron_root_ready(x))
+                self.pg.draw.rect(overlay, (95, 236, 166, 125) if safe else (255, 131, 76, 115),
+                                  (x * self.CELL + 2, y * self.CELL + 2,
+                                   self.CELL - 4, self.CELL - 4), border_radius=5)
+            start = ((boss.position[0] + .5) * self.CELL, (boss.position[1] + .5) * self.CELL)
+            end = ((boss.target[0] + .5) * self.CELL, (boss.target[1] + .5) * self.CELL)
+            self.pg.draw.line(overlay, (255, 197, 100, 220), start, end, 3)
+            self.screen.blit(overlay, (0, 0))
+            return
         if isinstance(env.boss, VoidAngler):
             boss = env.boss
             if boss.target is None:
@@ -838,6 +903,13 @@ class ArenaRenderer:
             elif event.startswith("void_drain:"): labels.append("外层装甲被引力雷吸离！")
             elif event.startswith("void_pull:"): labels.append("被引力牵引！")
             elif event.startswith("void_beam:"): labels.append("虚空光束发射！")
+            elif event.startswith("iron_aim:flame:"): labels.append("焚烧线预警：站在绿色根盘引火回流！")
+            elif event.startswith("iron_aim:thorn:"): labels.append("荆棘落点锁定：离开橙色区域！")
+            elif event.startswith("iron_vine_grow:"): labels.append("机械藤蔓长成荆棘墙！")
+            elif event.startswith("iron_vine_burn:"): labels.append("藤蔓被焚烧！")
+            elif event.startswith("iron_reflux:"): labels.append("热回流击中 Boss 装甲！")
+            elif event.startswith("iron_flame:"): labels.append("焚烧射线来袭！")
+            elif event.startswith("iron_thorn:"): labels.append("荆棘爆发！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")
