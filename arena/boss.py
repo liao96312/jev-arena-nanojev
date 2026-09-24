@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 @dataclass
 class PrismWarden:
     position: tuple[int, int] = (10, 8)
-    hp: int = 60
-    max_hp: int = 60
+    hp: int = 168
+    max_hp: int = 168
     reflections: int = 0
     used_reflectors: set[tuple[int, int]] = field(default_factory=set)
     exposed_rounds: int = 0
@@ -14,6 +14,7 @@ class PrismWarden:
     returning: bool = False
     lunge_used: bool = False
     shots_fired: int = 0
+    sweep: bool = False
     beam_damage: int = 14
     lunge_damage: int = 24
 

@@ -143,6 +143,7 @@ class ArenaEnv:
     def _generate_map(self) -> None:
         self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | None = None
         self.reflectors: set[tuple[int, int]] = set()
+        self.breakable_walls: set[tuple[int, int]] = set()
         self.coolant_valves: set[tuple[int, int]] = set()
         self.grounding_pylons: set[tuple[int, int]] = set()
         self.relay_pads: set[tuple[int, int]] = set()
@@ -180,7 +181,8 @@ class ArenaEnv:
             self.enemies, self.gems, self.fires, self.spikes = [], set(), set(), set()
             self.pits, self.barrels = set(), set()
             if self.config.difficulty_level == 10:
-                self.walls |= {(6, 10), (14, 10), (6, 13), (14, 13)}
+                self.breakable_walls = {(6, 10), (14, 10), (6, 13), (14, 13)}
+                self.walls |= self.breakable_walls
                 self.medkits, self.energy_cells = {(7, 14), (13, 14)}, {(7, 15), (13, 15)}
                 self.bow_pickups, self.pistol_pickups = set(), {(10, 14)}
                 self.arrow_bundles = set()
@@ -309,17 +311,37 @@ class ArenaEnv:
         if not isinstance(self.boss, PrismWarden) or self.boss.target is None:
             return ()
         cells = ray_cells(self.boss.position, self.boss.target)
-        mirror = next((index for index, cell in enumerate(cells)
-                       if cell in self.reflectors - self.boss.used_reflectors), None)
-        return cells[:mirror + 1] if mirror is not None else cells
+        stop = next((index for index, cell in enumerate(cells)
+                     if cell in self.walls or cell in self.reflectors - self.boss.used_reflectors), None)
+        return cells[:stop + 1] if stop is not None else cells
+
+    def prism_attack_cells(self) -> set[tuple[int, int]]:
+        path = self.boss_ray()
+        if not path:
+            return set()
+        cells = set(path)
+        if self.boss.sweep and path[-1] not in self.reflectors | self.walls:
+            x, y = path[-1]
+            cells.update((x + dx, y + dy) for dx, dy in DIRECTIONS.values()
+                         if self.in_bounds((x + dx, y + dy)))
+        return cells
 
     def prism_baits(self) -> set[tuple[int, int]]:
         if not isinstance(self.boss, PrismWarden) or self.boss.position[1] != 8:
             return set()
         unused = self.reflectors - self.boss.used_reflectors
-        return {(x, y) for y in range(14, 17) for x in range(4, 16)
-                if (x, y) not in self.walls | self.fires | self.spikes | self.pits and
-                any(cell in unused for cell in ray_cells(self.boss.position, (x, y)))}
+        baits = set()
+        for y in range(14, 17):
+            for x in range(4, 16):
+                if (x, y) in self.walls | self.fires | self.spikes | self.pits:
+                    continue
+                for cell in ray_cells(self.boss.position, (x, y)):
+                    if cell in self.walls:
+                        break
+                    if cell in unused:
+                        baits.add((x, y))
+                        break
+        return baits
 
     def storm_chain(self) -> tuple[tuple[int, int], ...]:
         if not isinstance(self.boss, StormChoir) or self.boss.target is None:
@@ -556,6 +578,8 @@ class ArenaEnv:
                 events.append("boss_shield")
                 return 0.0
             events.append(f"boss_hit:{actual}")
+            if isinstance(entity, PrismWarden) and entity.hp > 0 and entity.hp <= entity.max_hp * 2 // 3 < entity.hp + actual:
+                events.append("boss_prism_phase_two")
             if entity.hp <= 0:
                 self.boss = None
                 self.kills += 1
@@ -640,10 +664,15 @@ class ArenaEnv:
             return self._resolve_chrono(boss, events)
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
+            if boss.hp <= boss.max_hp * 2 // 3 and boss.exposed_rounds == 1:
+                previous = boss.position
+                boss.position = (11 if previous[0] <= 10 else 9, previous[1])
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:{boss.position[1]}")
             if not boss.exposed_rounds:
                 boss.reflections = 0
                 boss.used_reflectors.clear()
                 boss.lunge_used = False
+                boss.target = None
                 events.append("boss_shield_restored")
             return 0.0
         if boss.lunge_target:
@@ -663,19 +692,23 @@ class ArenaEnv:
             previous = boss.position
             boss.position = (10, 8)
             boss.returning = False
-            boss.target = self.player.position
+            boss.target = None
             events.append(f"boss_move:{previous[0]}:{previous[1]}:10:8")
-            events.append("boss_aim")
-            return 0.0
         if boss.target is None:
-            boss.target = self.player.position
-            events.append("boss_aim")
+            phase_two = boss.hp <= boss.max_hp * 2 // 3
+            cover_attack = phase_two and self.breakable_walls and boss.shots_fired % 3 == 0
+            boss.target = (min(self.breakable_walls, key=lambda cell: (self._distance(boss.position, cell), cell))
+                           if cover_attack else self.player.position)
+            boss.sweep = phase_two and not cover_attack and boss.shots_fired % 3 == 1
+            events.append("boss_cover_aim" if cover_attack else "boss_sweep_aim" if boss.sweep else "boss_aim")
             return 0.0
         path = self.boss_ray()
         endpoint = path[-1] if path else boss.position
         reflected = endpoint in self.reflectors - boss.used_reflectors
         events.append(f"boss_prism_shot:{boss.position[0]}:{boss.position[1]}:"
                       f"{endpoint[0]}:{endpoint[1]}:{int(reflected)}")
+        if boss.sweep and not reflected:
+            events.append("boss_prism_sweep")
         reward = 0.0
         if reflected:
             boss.used_reflectors.add(endpoint)
@@ -685,7 +718,11 @@ class ArenaEnv:
                 boss.exposed_rounds = 3
                 events.append("boss_shield_break")
                 reward += 15
-        elif self.player.position in path:
+        elif endpoint in self.breakable_walls:
+            self.breakable_walls.remove(endpoint)
+            self.walls.remove(endpoint)
+            events.append(f"boss_cover_break:{endpoint[0]}:{endpoint[1]}")
+        elif self.player.position in self.prism_attack_cells():
             reward += self._damage_entity(self.player, boss.beam_damage, events, "boss_prism")
         boss.shots_fired += 1
         if boss.exposed_rounds == 0:
@@ -1107,8 +1144,10 @@ class ArenaEnv:
     def imminent_threats(self, position: tuple[int, int] | None = None) -> tuple[tuple[str, int], ...]:
         position = position or self.player.position
         threats: list[tuple[str, int]] = []
-        if isinstance(self.boss, PrismWarden) and self.boss.target and position in self.boss_ray():
-            threats.append(("prism_warden/beam", self.boss.beam_damage))
+        if isinstance(self.boss, PrismWarden) and self.boss.target:
+            path = self.boss_ray()
+            if path and path[-1] not in self.walls | self.reflectors and position in self.prism_attack_cells():
+                threats.append(("prism_warden/beam", self.boss.beam_damage))
         if isinstance(self.boss, PrismWarden) and self.boss.lunge_target and self._distance(position, self.boss.lunge_target) <= 1:
             threats.append(("prism_warden/lunge", self.boss.lunge_damage))
         if isinstance(self.boss, FurnaceHydra) and self.boss.target:

@@ -81,6 +81,12 @@ class ArenaRenderer:
                     pg.draw.rect(self.screen, colors["grid"], rect, 1)
         for position in env.walls:
             self._sprite(position, "wall")
+        for x, y in env.breakable_walls:
+            center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
+            pg.draw.line(self.screen, (255, 155, 218),
+                         (center[0] - 10, center[1] - 12), (center[0] + 2, center[1]), 3)
+            pg.draw.line(self.screen, (255, 155, 218),
+                         (center[0] + 2, center[1]), (center[0] - 3, center[1] + 12), 3)
         for position in env.reflectors:
             used = hasattr(env.boss, "used_reflectors") and position in env.boss.used_reflectors
             center = (position[0] * self.CELL + self.CELL // 2,
@@ -213,6 +219,10 @@ class ArenaRenderer:
                                  progress * 2 if reflected else progress)
                 self._projectile_effect(shot_start, shot_end, shot_progress,
                                         "projectile_boss_prism", (215, 95, 255))
+                continue
+            if event.startswith("boss_cover_break:"):
+                _, x, y = event.split(":")
+                self._sprite((int(x), int(y)), "effect_boss_prism_burst")
                 continue
             if event.startswith("furnace_fireball:"):
                 parts = event.split(":")
@@ -647,6 +657,11 @@ class ArenaRenderer:
                               (cell[0] * self.CELL + 2, cell[1] * self.CELL + 2,
                                self.CELL - 4, self.CELL - 4), border_radius=5)
             self.pg.draw.circle(overlay, (255, 222, 255, 215), center, 4)
+        if env.boss.sweep:
+            for cell in env.prism_attack_cells() - set(path):
+                self.pg.draw.rect(overlay, (255, 102, 205, 125),
+                                  (cell[0] * self.CELL + 2, cell[1] * self.CELL + 2,
+                                   self.CELL - 4, self.CELL - 4), 3, border_radius=5)
         start = (env.boss.position[0] * self.CELL + self.CELL // 2,
                  env.boss.position[1] * self.CELL + self.CELL // 2)
         end = (path[-1][0] * self.CELL + self.CELL // 2,
@@ -710,6 +725,10 @@ class ArenaRenderer:
             elif event == "pit_fall": labels.append("敌人坠入深坑！")
             elif event.startswith("archer_shot:"): labels.append("敌方能量激光！")
             elif event == "boss_aim": labels.append("棱镜守卫锁定目标！")
+            elif event == "boss_sweep_aim": labels.append("棱镜横扫预警：亮格也会受到伤害！")
+            elif event == "boss_cover_aim": labels.append("棱镜守卫正在锁定可破坏掩体！")
+            elif event == "boss_prism_phase_two": labels.append("棱镜守卫进入第二阶段！")
+            elif event.startswith("boss_cover_break:"): labels.append("棱镜光束摧毁了掩体！")
             elif event.startswith("boss_prism_shot:"): labels.append("棱镜弹发射！")
             elif event.startswith("boss_reflect:"): labels.append("镜柱反射：护盾松动！")
             elif event.startswith("boss_lunge_aim:"): labels.append("Boss 突进预警：躲开红色区域！")

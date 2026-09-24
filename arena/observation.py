@@ -92,6 +92,8 @@ def encode_state(env: ArenaEnv) -> str:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
                 f"reflect={env.boss.reflections}/3 exposed={env.boss.exposed_rounds} "
+                f"phase={2 if env.boss.hp <= env.boss.max_hp * 2 // 3 else 1} "
+                f"sweep={int(env.boss.sweep)} cover={len(env.breakable_walls)} "
                 f"aim={target if target else 'none'} "
                 f"lunge={env.boss.lunge_target or 'none'} "
                 f"dmg=beam{env.boss.beam_damage}/lunge{env.boss.lunge_damage} "

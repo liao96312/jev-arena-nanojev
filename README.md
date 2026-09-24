@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-117%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-118%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -49,7 +49,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 
 ![第 10 关 Boss 突进预警、地形与补给](assets/screenshots/boss_prism_lunge.png)
 
-第 10 关核心开放 3 回合。默认 NanoJev 的混合策略现会主动寻找未使用的镜柱诱导位，破盾后优先射击；纯模型模式仍保留原始模型选择。棱镜射线伤害 14，突进伤害 24；炸药桶爆炸为菱形 2 格范围、基础伤害 25。
+第 10 关棱镜守卫现有 168 点生命，需要多轮破盾；血量降至三分之二后进入第二阶段，加入带预警的横扫和可击碎房内掩体的射线。核心每次开放 3 回合，且第二阶段会在开放期间换位。默认 NanoJev 的混合策略会主动寻找未使用的镜柱诱导位，破盾后优先射击；纯模型模式仍保留原始模型选择。棱镜射线伤害 14，突进伤害 24；炸药桶爆炸为菱形 2 格范围、基础伤害 25。
 
 第 20 关熔炉三头机的熔岩波预警；青色冷却阀、血包、复合弓和箭束都在独立的锻炉房内：
 
@@ -180,7 +180,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **117 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **118 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

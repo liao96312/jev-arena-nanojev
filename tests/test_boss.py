@@ -33,6 +33,7 @@ class PrismBossTests(unittest.TestCase):
         env.player.position = (9, 15)
         env.boss.target = env.player.position
         self.assertEqual(env.boss_ray()[-1], (9, 12))
+        self.assertFalse(env.imminent_threats())
         env.step(Action.WAIT)
         reflected = env.step(Action.WAIT)
         self.assertIn("boss_reflect:1", reflected.events)
@@ -80,9 +81,36 @@ class PrismBossTests(unittest.TestCase):
             events.extend(env.step(choice).events)
         self.assertTrue(env.done)
         self.assertEqual(env.player.hp, 100)
-        self.assertEqual(sum(event.startswith("boss_reflect:") for event in events), 3)
+        self.assertGreaterEqual(sum(event.startswith("boss_reflect:") for event in events), 9)
+        self.assertIn("boss_prism_phase_two", events)
+        self.assertTrue(any(event.startswith("boss_cover_break:") for event in events))
+        self.assertLess(len(env.breakable_walls), 4)
         self.assertEqual(len(env.reflectors), 4)
         self.assertIn("boss_defeated", events)
+
+    def test_prism_sweep_warning_matches_damage_and_cover_breaks(self):
+        env = ArenaEnv(campaign_config(10))
+        env.round = 3
+        env.boss.hp = 100
+        env.boss.sweep = True
+        env.boss.target = (10, 15)
+        env.player.position = (11, 15)
+        self.assertIn(("prism_warden/beam", 14), env.imminent_threats())
+        env.step(Action.WAIT)
+        hit = env.step(Action.WAIT)
+        self.assertIn("boss_prism_sweep", hit.events)
+        self.assertIn("damage:boss_prism:14", hit.events)
+
+        env = ArenaEnv(campaign_config(10))
+        env.round = 3
+        env.boss.target = (6, 10)
+        self.assertEqual(env.boss_ray()[-1], (6, 10))
+        self.assertNotIn(("prism_warden/beam", 14), env.imminent_threats())
+        env.step(Action.WAIT)
+        broken = env.step(Action.WAIT)
+        self.assertIn("boss_cover_break:6:10", broken.events)
+        self.assertNotIn((6, 10), env.walls | env.breakable_walls)
+        self.assertEqual(len(env.reflectors), 4)
 
     def test_lunge_warning_matches_damage_zone_and_can_be_dodged(self):
         env = ArenaEnv(campaign_config(10))
