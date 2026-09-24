@@ -115,6 +115,7 @@ class Enemy:
     enemy_type: EnemyType = EnemyType.CHASER
     intent: Intent | None = None
     stunned: int = 0
+    summoned_by: str | None = None
     max_hp: int = field(init=False)
 
     def __post_init__(self) -> None:

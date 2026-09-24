@@ -30,6 +30,7 @@ class FurnaceHydra:
     attack_kind: str = "wave"
     head_x: int = 10
     attacks: int = 0
+    summons: int = 0
     wave_damage: int = 22
     fireball_damage: int = 16
 
@@ -86,6 +87,7 @@ class IronGardener:
     target: tuple[int, int] | None = None
     attack_kind: str = "flame"
     attacks: int = 0
+    summons: int = 0
     flame_damage: int = 22
     thorn_damage: int = 18
 

@@ -79,7 +79,7 @@ def encode_state(env: ArenaEnv) -> str:
                 f"valves={sorted(env.boss.valves_opened)}/3 exposed={env.boss.exposed_rounds} "
                 f"attack={env.boss.attack_kind} aim={env.boss.target or 'none'} "
                 f"dmg=wave{env.boss.wave_damage}/fireball{env.boss.fireball_damage} "
-                f"coolant={sorted(env.coolant_valves)}.")
+                f"coolant={sorted(env.coolant_valves)} summons={env.boss.summons}/1.")
     elif isinstance(env.boss, StormChoir):
         boss = (f" Boss storm@{env.boss.position} hp={env.boss.hp} exposed={env.boss.exposed_rounds} "
                 f"phase={2 if env.boss.hp <= env.boss.max_hp * 2 // 3 else 1} "
@@ -101,7 +101,7 @@ def encode_state(env: ArenaEnv) -> str:
         boss = (f" Boss iron@{env.boss.position} hp={env.boss.hp} reflux={len(env.boss.refluxed_roots)}/4 "
                 f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
                 f"roots={sorted(env.root_plates - {(x, 12) for x in env.boss.refluxed_roots})} "
-                f"flame{env.boss.flame_damage}/thorn{env.boss.thorn_damage}.")
+                f"flame{env.boss.flame_damage}/thorn{env.boss.thorn_damage} summons={env.boss.summons}/1.")
     elif isinstance(env.boss, MirrorSeraph):
         boss = (f" Boss mirror@{env.boss.position} hp={env.boss.hp} "
                 f"locks={sorted(env.mirror_locks - env.boss.broken_locks)} "

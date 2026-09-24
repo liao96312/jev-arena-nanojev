@@ -21,6 +21,8 @@ REASON_NAMES = {
     "model_argmax": "模型首选", "backtrack_avoided": "避免折返",
     "planner_rerank": "规划重排", "planner_route": "最短路导航",
     "boss_tactics": "Boss 机制反制",
+    "model_input_fallback": "输入超出本地模型长度，规则接管",
+    "boss_rule_assist": "攻城 Boss 规则辅助",
     "survival_heal": "低血量优先治疗", "survival_dodge": "避开敌方攻击", "forced": "唯一可选",
 }
 
@@ -240,7 +242,9 @@ class ArenaRenderer:
             previous = old_enemies.get(id(enemy), enemy.position)
             position = (previous[0] + (enemy.position[0] - previous[0]) * eased,
                         previous[1] + (enemy.position[1] - previous[1]) * eased)
-            self._sprite(position, f"enemy_{enemy.enemy_type.value}")
+            sprite = ({"furnace": "enemy_furnace_hatchling", "iron": "enemy_vine_hunter"}.get(
+                enemy.summoned_by, f"enemy_{enemy.enemy_type.value}"))
+            self._sprite(position, sprite)
             self._health_bar(position, enemy.hp, enemy.max_hp)
             self._intent(enemy.position, enemy.intent)
         if env.boss:
@@ -610,6 +614,7 @@ class ArenaRenderer:
         root = Path(__file__).resolve().parents[1] / "assets" / "sprites"
         sprites = {}
         for name in ("player", "player_n", "player_e", "enemy_chaser", "enemy_charger", "enemy_bomber", "enemy_archer",
+                     "enemy_furnace_hatchling", "enemy_vine_hunter",
                      "gem", "fire", "medkit", "wall", "item_bow", "item_pulse_pistol",
                      "ammo_arrows", "ammo_energy_cell", "barrel", "spike", "pit",
                      "projectile_enemy_laser", "projectile_player_pulse", "projectile_player_arrow",
@@ -1190,6 +1195,8 @@ class ArenaRenderer:
             elif event.startswith("iron_reflux:"): labels.append("热回流击中 Boss 装甲！")
             elif event.startswith("iron_flame:"): labels.append("焚烧射线来袭！")
             elif event.startswith("iron_thorn:"): labels.append("荆棘爆发！")
+            elif event.startswith("boss_summon:furnace:"): labels.append("熔炉孵出爆裂幼体！")
+            elif event.startswith("boss_summon:iron:"): labels.append("园丁放出藤蔓猎兽！")
             elif event.startswith("mirror_aim:"): labels.append("镜像动作已预告：注意实际方向！")
             elif event.startswith("mirror_shard:"): labels.append("镜像碎片射线！")
             elif event.startswith("mirror_echo_aim:"): labels.append("紫色镜片十字锁定旧位置：下一轮离开！")

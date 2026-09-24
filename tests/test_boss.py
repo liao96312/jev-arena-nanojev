@@ -203,6 +203,21 @@ class PrismBossTests(unittest.TestCase):
         self.assertTrue(any(event.startswith("furnace_ignite:") for event in events))
         self.assertIn("boss_defeated", events)
 
+    def test_furnace_summons_one_warned_ember_minion(self):
+        env = ArenaEnv(campaign_config(20))
+        env.round = 6
+        events = []
+        env._summon_boss_minion(env.boss, events)
+        self.assertIn("boss_summon:furnace:6:7", events)
+        self.assertEqual(env.enemies[0].summoned_by, "furnace")
+        self.assertIsNotNone(env.enemies[0].intent)
+        env._summon_boss_minion(env.boss, events)
+        self.assertEqual(len(env.enemies), 1)
+        env.boss.exposed_rounds = 1
+        env.boss.hp = 1
+        env._damage_entity(env.boss, 1, events, "pistol")
+        self.assertEqual(env.enemies, [])
+
     def test_furnace_phase_two_wide_wave_and_temporary_fire(self):
         env = ArenaEnv(campaign_config(20))
         env.round = 3
@@ -557,6 +572,17 @@ class VoidBossTests(unittest.TestCase):
 
 
 class IronBossTests(unittest.TestCase):
+    def test_iron_summons_one_vine_hunter(self):
+        env = ArenaEnv(campaign_config(60))
+        env.round = 6
+        events = []
+        env._summon_boss_minion(env.boss, events)
+        self.assertIn("boss_summon:iron:6:8", events)
+        self.assertEqual(env.enemies[0].summoned_by, "iron")
+        env.enemies.clear()
+        env._summon_boss_minion(env.boss, events)
+        self.assertEqual(env.enemies, [])
+
     def test_seed_growth_flame_counter_and_safe_routes(self):
         env = ArenaEnv(campaign_config(60))
         self.assertFalse(env.gems)
@@ -600,7 +626,7 @@ class IronBossTests(unittest.TestCase):
                 events.extend(env.step(action).events)
             self.assertTrue(env.done)
             self.assertEqual(env.player.hp, 100)
-            self.assertEqual(events.count("boss_shield_break"), 2)
+            self.assertEqual(events.count("boss_shield_break"), 3)
             self.assertIn("boss_defeated", events)
 
 

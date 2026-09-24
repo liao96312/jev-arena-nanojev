@@ -3,6 +3,7 @@ import time
 from collections import OrderedDict
 
 from arena.candidates import build_candidates
+from arena.boss import SiegeLeviathan
 from arena.entities import Action
 from arena.env import ArenaEnv
 from nanojev_adapter.client import NanoJevClient
@@ -52,6 +53,11 @@ class NanoJevAgent:
                 choice = next(iter(offered))
                 actions[i], probabilities[i] = Action(choice), {choice: 1.0}
                 continue
+            if self.policy_mode == "hybrid" and isinstance(envs[i].boss, SiegeLeviathan):
+                distribution = {action: 1 / len(offered) for action in offered}
+                choice, _ = select_action(distribution, envs[i], self.policy_mode)
+                actions[i], probabilities[i], reasons[i] = Action(choice), distribution, "boss_rule_assist"
+                continue
             request_state = decision_request(envs[i])["states"][0]
             key = json.dumps((request_state["state"], request_state["questions"]),
                              ensure_ascii=False, sort_keys=True)
@@ -70,7 +76,17 @@ class NanoJevAgent:
             batch = pending[start:start + self.max_batch_states]
             payload = {"states": [request_states[i][0] for i in batch]}
             started = time.perf_counter()
-            response = self.client.evaluate(payload)
+            try:
+                response = self.client.evaluate(payload)
+            except RuntimeError as exc:
+                if "max_length" not in str(exc):
+                    raise
+                # Late Boss descriptions can exceed the fixed local context; keep the game playable.
+                for i in batch:
+                    distribution = {action: 1 / len(candidates[i]) for action in candidates[i]}
+                    choice, _ = select_action(distribution, envs[i], self.policy_mode)
+                    actions[i], probabilities[i], reasons[i] = Action(choice), distribution, "model_input_fallback"
+                continue
             request_latency = (time.perf_counter() - started) * 1000
             latency += request_latency
             for i in batch:

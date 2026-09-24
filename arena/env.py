@@ -754,6 +754,7 @@ class ArenaEnv:
                 events.append("chrono_phase_two")
             if entity.hp <= 0:
                 self.apex_cage.clear()
+                self.enemies = [enemy for enemy in self.enemies if not enemy.summoned_by]
                 self.boss = None
                 self.kills += 1
                 self.score += 50
@@ -846,12 +847,34 @@ class ArenaEnv:
             reward += self._push_entity(enemy, direction, events)
         return reward
 
+    def _summon_boss_minion(self, boss: FurnaceHydra | IronGardener, events: list[str]) -> None:
+        if (self.round % 6 or boss.exposed_rounds or boss.summons >= 1 or
+                any(enemy.summoned_by for enemy in self.enemies)):
+            return
+        furnace = isinstance(boss, FurnaceHydra)
+        positions = ((6, 7), (14, 7)) if furnace else ((6, 8), (14, 8))
+        for position in positions[boss.summons % 2:] + positions[:boss.summons % 2]:
+            if (position in self.walls | self.pits | self.fires | self.vine_walls or
+                    position == self.player.position or self.enemy_at(position) or
+                    self._distance(position, self.player.position) <= 3):
+                continue
+            kind = "furnace" if furnace else "iron"
+            enemy = Enemy(position, enemy_type=EnemyType.BOMBER if furnace else EnemyType.CHASER,
+                          summoned_by=kind)
+            self.enemies.append(enemy)
+            self._plan_enemy_intents([enemy])
+            boss.summons += 1
+            events.append(f"boss_summon:{kind}:{position[0]}:{position[1]}")
+            return
+
     def _resolve_boss(self, events: list[str]) -> float:
         boss = self.boss
         if boss is None or self.round < self.config.spawn_protection_rounds:
             return 0.0
         if isinstance(boss, FurnaceHydra):
-            return self._resolve_furnace(boss, events)
+            reward = self._resolve_furnace(boss, events)
+            self._summon_boss_minion(boss, events)
+            return reward
         if isinstance(boss, StormChoir):
             return self._resolve_storm(boss, events)
         if isinstance(boss, ChronoMantis):
@@ -859,7 +882,9 @@ class ArenaEnv:
         if isinstance(boss, VoidAngler):
             return self._resolve_void(boss, events)
         if isinstance(boss, IronGardener):
-            return self._resolve_iron(boss, events)
+            reward = self._resolve_iron(boss, events)
+            self._summon_boss_minion(boss, events)
+            return reward
         if isinstance(boss, MirrorSeraph):
             return self._resolve_mirror(boss, events)
         if isinstance(boss, SiegeLeviathan):
@@ -2030,7 +2055,7 @@ class ArenaEnv:
                       self.boss.returning) if isinstance(self.boss, PrismWarden) else
                      ("furnace", self.boss.position, self.boss.hp, tuple(sorted(self.boss.valves_opened)),
                       self.boss.exposed_rounds, self.boss.attack_kind, self.boss.target,
-                      self.boss.attacks) if isinstance(self.boss, FurnaceHydra) else
+                      self.boss.attacks, self.boss.summons) if isinstance(self.boss, FurnaceHydra) else
                      ("storm", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.attack_kind, self.boss.target, self.boss.attacks) if isinstance(self.boss, StormChoir) else
                      ("chrono", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
@@ -2041,7 +2066,7 @@ class ArenaEnv:
                       self.boss.target, self.boss.attacks) if isinstance(self.boss, VoidAngler) else
                      ("iron", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.refluxed_roots)), self.boss.attack_kind,
-                      self.boss.target, self.boss.attacks) if isinstance(self.boss, IronGardener) else
+                      self.boss.target, self.boss.attacks, self.boss.summons) if isinstance(self.boss, IronGardener) else
                      ("mirror", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.broken_locks)), self.boss.copied_action,
                       self.boss.mirrored_direction, self.boss.target,
@@ -2079,7 +2104,7 @@ class ArenaEnv:
                                     enemy.intent.direction if enemy.intent else None,
                                     enemy.intent.countdown if enemy.intent else 0,
                                     enemy.intent.power if enemy.intent else 0,
-                                    enemy.stunned) for enemy in self.enemies),
+                                    enemy.stunned, enemy.summoned_by) for enemy in self.enemies),
             "gems": tuple(sorted(self.gems)),
             "fires": tuple(sorted(self.fires)),
             "spikes": tuple(sorted(self.spikes)),

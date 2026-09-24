@@ -1,6 +1,6 @@
 import unittest
 
-from arena import ArenaConfig, ArenaEnv
+from arena import ArenaConfig, ArenaEnv, campaign_config
 from arena.entities import Enemy, EnemyType, Intent, IntentType
 from agents.nanojev_agent import NanoJevAgent
 from nanojev_adapter.schema import decision_request, parse_probabilities
@@ -24,6 +24,11 @@ class FakeClient:
                 "execution": {"forward_passes": 1, "network_model_calls": 0}}
 
 
+class OverlongClient:
+    def evaluate(self, payload):
+        raise RuntimeError("candidate path 308 tokens exceeds max_length=256")
+
+
 class NanoJevAdapterTests(unittest.TestCase):
     def setUp(self):
         self.env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=1, fires=1, medkits=0))
@@ -44,6 +49,23 @@ class NanoJevAdapterTests(unittest.TestCase):
         action = agent.act(self.env)
         self.assertIn(action, self.env.legal_actions())
         self.assertAlmostEqual(sum(agent.last_probabilities.values()), 1)
+
+    def test_overlong_local_input_falls_back_to_legal_action(self):
+        agent = NanoJevAgent(OverlongClient())
+        action = agent.act(self.env)
+        self.assertIn(action, self.env.legal_actions())
+        self.assertEqual(agent.last_selection_reason, "model_input_fallback")
+
+    def test_siege_boss_uses_rule_assist_without_model_call(self):
+        agent = NanoJevAgent(OverlongClient())
+        env = ArenaEnv(campaign_config(80))
+        for _ in range(200):
+            if env.done:
+                break
+            env.step(agent.act(env))
+        self.assertTrue(env.done)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(agent.last_selection_reason, "boss_rule_assist")
 
     def test_forced_action_does_not_call_model(self):
         env = ArenaEnv(ArenaConfig(width=1, height=1, walls=0, enemies=0, gems=0, fires=0, medkits=0))
