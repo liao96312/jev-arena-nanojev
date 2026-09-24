@@ -5,7 +5,7 @@ from pathlib import Path
 
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
-from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, StormChoir, VoidAngler
+from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, SiegeLeviathan, StormChoir, VoidAngler
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
@@ -68,7 +68,10 @@ class ArenaRenderer:
         for y in range(env.config.height):
             for x in range(env.config.width):
                 rect = pg.Rect(x * self.CELL, y * self.CELL, self.CELL, self.CELL)
-                if env.mirror_locks:
+                if env.rail_locks:
+                    pg.draw.rect(self.screen, (31, 31, 39) if (x + y) % 2 else (39, 37, 43), rect)
+                    pg.draw.rect(self.screen, (78, 71, 66), rect, 1)
+                elif env.mirror_locks:
                     pg.draw.rect(self.screen, (35, 27, 52) if (x + y) % 2 else (42, 31, 61), rect)
                     pg.draw.rect(self.screen, (84, 63, 119), rect, 1)
                 elif env.root_plates:
@@ -115,6 +118,13 @@ class ArenaRenderer:
                             [(center[0], center[1] - 15), (center[0] + 14, center[1]),
                              (center[0], center[1] + 15), (center[0] - 14, center[1])], 3)
             pg.draw.circle(self.screen, (106, 94, 124) if broken else (255, 236, 255), center, 5)
+        for position in env.rail_locks:
+            broken = isinstance(env.boss, SiegeLeviathan) and position in env.boss.broken_locks
+            center = (position[0] * self.CELL + self.CELL // 2,
+                      position[1] * self.CELL + self.CELL // 2)
+            pg.draw.rect(self.screen, (110, 104, 95) if broken else (255, 177, 93),
+                         (center[0] - 13, center[1] - 13, 26, 26), 3, border_radius=4)
+            pg.draw.circle(self.screen, (110, 104, 95) if broken else (255, 234, 171), center, 5)
         for x, y in env.breakable_walls:
             center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
             pg.draw.line(self.screen, (255, 155, 218),
@@ -184,6 +194,13 @@ class ArenaRenderer:
             self._intent_line(env, enemy)
         if env.boss:
             self._boss_telegraph(env)
+        for position in env.rail_covers.values():
+            rect = pg.Rect(position[0] * self.CELL + 3, position[1] * self.CELL + 3,
+                           self.CELL - 6, self.CELL - 6)
+            pg.draw.rect(self.screen, (75, 112, 127), rect, border_radius=5)
+            pg.draw.rect(self.screen, (152, 232, 241), rect, 3, border_radius=5)
+            pg.draw.line(self.screen, (221, 248, 242), rect.topleft, rect.bottomright, 2)
+            pg.draw.line(self.screen, (221, 248, 242), rect.topright, rect.bottomleft, 2)
         for enemy in env.enemies:
             previous = old_enemies.get(id(enemy), enemy.position)
             position = (previous[0] + (enemy.position[0] - previous[0]) * eased,
@@ -203,19 +220,26 @@ class ArenaRenderer:
             void = isinstance(env.boss, VoidAngler)
             iron = isinstance(env.boss, IronGardener)
             mirror = isinstance(env.boss, MirrorSeraph)
-            self._sprite(boss_position, "boss_mirror_seraph" if mirror else
+            siege = isinstance(env.boss, SiegeLeviathan)
+            self._sprite(boss_position, "boss_siege_leviathan" if siege else
+                         "boss_mirror_seraph" if mirror else
                          "boss_iron_gardener" if iron else
                          "boss_void_angler" if void else
                          "boss_chrono_mantis" if chrono else
                          "boss_storm_choir" if storm else
                          "boss_furnace_hydra" if furnace else "boss_prism_warden")
             if "boss_shield_break" in events:
-                self._sprite(boss_position, "effect_boss_mirror_shards" if mirror else
+                self._sprite(boss_position, "effect_boss_railgun" if siege else
+                             "effect_boss_mirror_shards" if mirror else
                              "effect_boss_plasma_thorns" if iron else
                              "effect_boss_gravity_vortex" if void else
                              "effect_boss_temporal_slash" if chrono else
                              "effect_boss_chain_lightning" if storm else
                              "effect_boss_magma_wave" if furnace else "effect_boss_prism_burst")
+            if siege and any(event.startswith("rail_fire:") for event in events):
+                target = next(event.split(":") for event in events if event.startswith("rail_fire:"))
+                self._sprite((int(target[2]) if target[1] == "v" else 10,
+                              10 if target[1] == "v" else int(target[2])), "effect_boss_railgun")
             if any(event.startswith("boss_hit:") for event in events):
                 center = (round((boss_position[0] + .5) * self.CELL),
                           round((boss_position[1] + .5) * self.CELL))
@@ -376,6 +400,10 @@ class ArenaRenderer:
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          f"镜锁 {len(env.boss.broken_locks)}/3")
                 label, tint = "镜像炽天使", (255, 174, 237)
+            elif isinstance(env.boss, SiegeLeviathan):
+                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                         f"装甲锁 {len(env.boss.broken_locks)}/4")
+                label, tint = "攻城利维坦", (255, 193, 122)
             elif isinstance(env.boss, StormChoir):
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          "接地柱 0/4" if env.boss.target is None else
@@ -401,6 +429,10 @@ class ArenaRenderer:
                 mirrored = directions.get(env.boss.mirrored_direction, "—")
                 self._text(f"将复制：{kind}{original} → 实际：{mirrored}", left, 289,
                            (255, 210, 242), small=True)
+            if isinstance(env.boss, SiegeLeviathan) and env.boss.rail_target is not None:
+                lane = "列" if env.boss.rail_axis == "v" else "行"
+                self._text(f"轨道炮：{lane} {env.boss.rail_target} · 蓄力 {env.boss.charge}",
+                           left, 289, (255, 214, 168), small=True)
         self._text(f"智能体：{AGENT_NAMES.get(agent, agent)}", left, 55, colors["muted"])
         self._text(f"动作：{ACTION_NAMES.get(action, action)}", left, 80, colors["text"])
         self._text(f"推理耗时：{latency_ms:.1f} 毫秒", left, 105, colors["muted"])
@@ -474,7 +506,8 @@ class ArenaRenderer:
                      "effect_boss_temporal_slash", "boss_void_angler",
                      "effect_boss_gravity_vortex", "boss_iron_gardener",
                      "effect_boss_plasma_thorns", "boss_mirror_seraph",
-                     "effect_boss_mirror_shards"):
+                     "effect_boss_mirror_shards", "boss_siege_leviathan",
+                     "effect_boss_railgun"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -500,6 +533,8 @@ class ArenaRenderer:
                 limit = round(self.CELL * (3.2 if name == "boss_iron_gardener" else 2.0))
             elif name in ("boss_mirror_seraph", "effect_boss_mirror_shards"):
                 limit = round(self.CELL * (3.2 if name == "boss_mirror_seraph" else 2.1))
+            elif name in ("boss_siege_leviathan", "effect_boss_railgun"):
+                limit = round(self.CELL * (4.2 if name == "boss_siege_leviathan" else 2.2))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -673,6 +708,21 @@ class ArenaRenderer:
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
     def _boss_telegraph(self, env: ArenaEnv) -> None:
+        if isinstance(env.boss, SiegeLeviathan):
+            path = env.rail_path()
+            if not path:
+                return
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            alpha = 80 if env.boss.charge == 2 else 145
+            cover = env.rail_cover()
+            for x, y in path:
+                safe = cover and (y > cover[1] if env.boss.rail_axis == "v" else x > cover[0])
+                color = (107, 215, 223, 82) if safe else (255, 147, 68, alpha)
+                self.pg.draw.rect(overlay, color,
+                                  (x * self.CELL + 2, y * self.CELL + 2,
+                                   self.CELL - 4, self.CELL - 4), border_radius=5)
+            self.screen.blit(overlay, (0, 0))
+            return
         if isinstance(env.boss, MirrorSeraph):
             path = env.mirror_ray()
             if not path:
@@ -963,6 +1013,13 @@ class ArenaRenderer:
             elif event.startswith("mirror_lock_break:"): labels.append("镜锁被反射碎片击碎！")
             elif event == "mirror_silence": labels.append("镜像 EMP：局部沉默一回合")
             elif event == "mirror_heal_echo": labels.append("镜像治疗：不消耗玩家药包")
+            elif event.startswith("rail_aim:"): labels.append("轨道炮开始两轮蓄力：寻找可移动掩体！")
+            elif event.startswith("rail_charge:"): labels.append("轨道炮即将贯穿预警线！")
+            elif event.startswith("rail_fire:"): labels.append("轨道炮贯穿！")
+            elif event.startswith("rail_cover_break:"): labels.append("掩体挡住炮击并碎裂！")
+            elif event.startswith("rail_cover_rebuild:"): labels.append("掩体重新生成！")
+            elif event.startswith("rail_cover_shove:"): labels.append("推动了掩体！")
+            elif event.startswith("rail_lock_break:"): labels.append("折射爆炸击碎装甲锁！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")

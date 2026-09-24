@@ -346,6 +346,7 @@ class ArenaTests(unittest.TestCase):
     def test_campaign_archer_cannot_target_player_during_spawn_protection(self):
         env = ArenaEnv(campaign_config(3))
         env.player.position = (5, 2)
+        env.walls.clear()  # This test isolates spawn protection, not a seeded room layout.
         archer = Enemy((1, 2), enemy_type=EnemyType.ARCHER)
         env.enemies = [archer]
         env.round = 1
@@ -412,6 +413,7 @@ class ArenaTests(unittest.TestCase):
 
         charger_env = ArenaEnv(campaign_config(12))
         charger_env.player.position = (6, 2)
+        charger_env.walls.clear()
         charger = Enemy((2, 2), enemy_type=EnemyType.CHARGER)
         charger_env.enemies = [charger]
         charger_env._plan_enemy_intents()
@@ -419,6 +421,7 @@ class ArenaTests(unittest.TestCase):
 
         archer_env = ArenaEnv(campaign_config(18))
         archer_env.player.position, archer_env.round = (6, 2), 3
+        archer_env.walls.clear()
         archer = Enemy((2, 2), enemy_type=EnemyType.ARCHER)
         archer_env.enemies = [archer]
         archer_env._plan_enemy_intents()
@@ -506,6 +509,22 @@ class ArenaTests(unittest.TestCase):
     def test_campaign_keeps_missing_weapon_pickups_available(self):
         self.assertEqual(campaign_config(13).bow_pickups, 1)
         self.assertEqual(campaign_config(13).pistol_pickups, 1)
+
+    def test_adjacent_normal_levels_vary_supplies_and_seeded_layout(self):
+        previous = None
+        for level in range(1, 101):
+            if level % 10 == 0:
+                previous = None
+                continue
+            config = campaign_config(level)
+            supplies = (config.medkits, config.bow_pickups, config.pistol_pickups,
+                        config.arrow_bundles, config.energy_cells)
+            self.assertNotEqual(supplies, previous, level)
+            previous = supplies
+        for first, second in ((31, 32), (81, 82)):
+            a, b = ArenaEnv(campaign_config(first)), ArenaEnv(campaign_config(second))
+            self.assertNotEqual((a.walls, a.pits, a.fires), (b.walls, b.pits, b.fires))
+            self.assertEqual(a.observation(), ArenaEnv(campaign_config(first)).observation())
 
     def test_weapon_pickup_candidate_reports_acquisition(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,

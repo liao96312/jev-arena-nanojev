@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .entities import (DIRECTIONS, ENEMY_MELEE_BONUS, ENEMY_MOVE_DELAY, ENEMY_SPEED_LEVEL, Action,
                        Enemy, EnemyType, Intent, IntentType, Player, PlayerLoadout)
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, StormChoir, VoidAngler, ray_cells
+from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler, ray_cells
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class ArenaConfig:
 def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
-    if level in (10, 20, 30, 40, 50, 60, 70):
+    if level in (10, 20, 30, 40, 50, 60, 70, 80):
         return ArenaConfig(difficulty_level=level, max_ticks=300, walls=0, enemies=0, gems=0,
                            fires=0, spikes=0, pits=0, barrels=0, medkits=0,
                            enemy_hp_bonus=level - 1, action_points=2, spawn_protection_rounds=2,
@@ -79,11 +79,11 @@ def campaign_config(level: int) -> ArenaConfig:
         spikes=min(8, max(0, level - 1) * 2),
         pits=min(4, max(0, level - 2)),
         barrels=min(4, level // 2),
-        medkits=max(1, 3 - level // 3),
+        medkits=max(1, 3 - level // 3) + int(level >= 6 and level % 4 == 0),
         bow_pickups=1,
         pistol_pickups=1 if level >= 3 else 0,
-        arrow_bundles=1 if level >= 2 else 0,
-        energy_cells=1 if level >= 4 else 0,
+        arrow_bundles=1 + int(level >= 6 and level % 2 == 0) if level >= 2 else 0,
+        energy_cells=1 + int(level % 5 == 0) if level >= 4 else 0,
         enemy_damage=4 + (level - 1) // 3,
         enemy_hp_bonus=level - 1,
         fire_damage=9 + (level - 1) // 3,
@@ -126,7 +126,9 @@ class ArenaEnv:
         if any(not 0 <= ratio <= 1 for ratio in ratios) or sum(ratios) > 1:
             raise ValueError("enemy type ratios must be between zero and one and sum to at most one")
         self.seed = seed
-        self.rng = random.Random(seed)
+        self.rng = random.Random(
+            f"{seed}:{self.config.difficulty_level}"
+            if self.config.finish_on_all_gems and self.config.difficulty_level > 1 else seed)
         self.tick = self.score = self.gems_collected = self.kills = self.environment_kills = 0
         self.round, self.ap_remaining = 1, self.config.action_points
         self.damage_taken = 0
@@ -142,7 +144,7 @@ class ArenaEnv:
         raise RuntimeError("could not generate a playable map after 20 attempts")
 
     def _generate_map(self) -> None:
-        self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | None = None
+        self.boss: PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | None = None
         self.reflectors: set[tuple[int, int]] = set()
         self.breakable_walls: set[tuple[int, int]] = set()
         self.coolant_valves: set[tuple[int, int]] = set()
@@ -152,18 +154,22 @@ class ArenaEnv:
         self.gravity_nodes: set[tuple[int, int]] = set()
         self.root_plates: set[tuple[int, int]] = set()
         self.mirror_locks: set[tuple[int, int]] = set()
+        self.rail_locks: set[tuple[int, int]] = set()
+        self.rail_covers: dict[tuple[int, int], tuple[int, int]] = {}
+        self.rail_rebuilds: dict[tuple[int, int], int] = {}
         self.vine_seeds: dict[tuple[int, int], int] = {}
         self.vine_walls: set[tuple[int, int]] = set()
         self.forge_floor: set[tuple[int, int]] = set()
         self.furnace_burns: dict[tuple[int, int], int] = {}
-        if self.config.difficulty_level in (10, 20, 30, 40, 50, 60, 70) and self.config.finish_on_all_gems:
+        if self.config.difficulty_level in (10, 20, 30, 40, 50, 60, 70, 80) and self.config.finish_on_all_gems:
             furnace = self.config.difficulty_level == 20
             storm = self.config.difficulty_level == 30
             chrono = self.config.difficulty_level == 40
             void = self.config.difficulty_level == 50
             iron = self.config.difficulty_level == 60
             mirror = self.config.difficulty_level == 70
-            self.player = Player((10, 16 if furnace or storm or chrono or void or iron or mirror else 15), loadout=self.loadout)
+            siege = self.config.difficulty_level == 80
+            self.player = Player((10, 16 if furnace or storm or chrono or void or iron or mirror or siege else 15), loadout=self.loadout)
             if furnace:
                 self.player.loadout.bow = True
                 self.player.loadout.arrows = max(10, self.player.loadout.arrows)
@@ -175,19 +181,33 @@ class ArenaEnv:
             elif storm or chrono or void:
                 self.player.loadout.pistol = True
                 self.player.loadout.energy = max(12, self.player.loadout.energy)
+                top = (3, 17) if storm else (4, 16) if chrono else (5, 15)
+                bottom = (3, 17) if storm else (2, 18) if chrono else (4, 16)
                 room = {(x, y) for y in range(20)
-                        for x in range(3 if y in (0, 1, 18, 19) else
+                        for x in range(top[0] if y in (0, 1) else
+                                       bottom[0] if y in (18, 19) else
                                        1 if y in (2, 3, 16, 17) else 0,
-                                       17 if y in (0, 1, 18, 19) else
+                                       top[1] if y in (0, 1) else
+                                       bottom[1] if y in (18, 19) else
                                        19 if y in (2, 3, 16, 17) else 20)}
             elif iron or mirror:
                 self.player.loadout.pistol = True
                 self.player.loadout.energy = max(12, self.player.loadout.energy)
                 room = {(x, y) for y in range(20)
-                        for x in range(4 if y in (0, 1, 2, 17, 18, 19) else
+                        for x in range((4 if iron else 3) if y in (0, 1, 2) else
+                                       (4 if iron else 5) if y in (17, 18, 19) else
                                        2 if y in (3, 4, 15, 16) else 0,
-                                       16 if y in (0, 1, 2, 17, 18, 19) else
+                                       (16 if iron else 17) if y in (0, 1, 2) else
+                                       (16 if iron else 15) if y in (17, 18, 19) else
                                        18 if y in (3, 4, 15, 16) else 20)}
+            elif siege:
+                self.player.loadout.pistol = True
+                self.player.loadout.energy = max(18, self.player.loadout.energy)
+                room = {(x, y) for y in range(20)
+                        for x in range(5 if y <= 2 else 3 if y <= 5 else
+                                       2 if y >= 15 and y <= 17 else 6 if y >= 18 else 1,
+                                       15 if y <= 2 else 18 if y <= 5 else
+                                       18 if y >= 15 and y <= 17 else 14 if y >= 18 else 19)}
             else:
                 self.player.loadout.pistol = True
                 self.player.loadout.energy = max(12, self.player.loadout.energy)
@@ -220,8 +240,8 @@ class ArenaEnv:
                 self.walls |= {(5, 7), (14, 7), (5, 11), (14, 11),
                                (4, 14), (15, 14), (6, 16), (13, 16)}
                 self.pits = {(3, 9), (16, 9), (4, 16), (15, 16)}
-                self.medkits, self.energy_cells = {(5, 15), (14, 15)}, {(7, 15), (13, 15)}
-                self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
+                self.medkits, self.energy_cells = {(5, 15)}, {(7, 15), (13, 15), (10, 14)}
+                self.bow_pickups, self.pistol_pickups = set(), set()
                 self.arrow_bundles = set()
                 self.grounding_pylons = {(8, 9), (12, 9), (11, 13), (7, 13)}
                 self.relay_pads = {(8, 8), (10, 8), (12, 8)}
@@ -230,7 +250,7 @@ class ArenaEnv:
                 self.walls |= {(4, 8), (15, 8), (5, 10), (12, 10),
                                (4, 13), (15, 13), (6, 15), (13, 15)}
                 self.pits = {(3, 11), (16, 11), (5, 16), (14, 16)}
-                self.medkits, self.energy_cells = {(6, 14), (13, 14)}, {(7, 15), (12, 15)}
+                self.medkits, self.energy_cells = {(6, 14), (13, 14), (11, 16)}, {(7, 15)}
                 self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
                 self.arrow_bundles = set()
                 self.time_anchors = {(9, 11), (14, 11)}
@@ -239,7 +259,7 @@ class ArenaEnv:
                 self.walls |= {(5, 8), (14, 8), (6, 12), (14, 12),
                                (4, 14), (15, 14)}
                 self.pits = {(3, 10), (16, 10), (5, 15), (15, 15)}
-                self.medkits, self.energy_cells = {(6, 15), (14, 15)}, {(7, 16), (13, 16)}
+                self.medkits, self.energy_cells = {(6, 15)}, {(7, 16), (13, 16)}
                 self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
                 self.arrow_bundles = set()
                 self.gravity_nodes = {(7, 11), (10, 12), (13, 11)}
@@ -247,20 +267,29 @@ class ArenaEnv:
             elif iron:
                 self.walls |= {(4, 8), (15, 8), (5, 14), (15, 14)}
                 self.pits = {(3, 11), (16, 11), (4, 16), (15, 16)}
-                self.medkits, self.energy_cells = {(6, 15), (14, 15)}, {(7, 16), (13, 16)}
-                self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
+                self.medkits, self.energy_cells = {(6, 15), (14, 15)}, {(8, 16)}
+                self.bow_pickups, self.pistol_pickups = set(), set()
                 self.arrow_bundles = set()
                 self.root_plates = {(x, 12) for x in (6, 9, 12, 15)}
                 self.vine_seeds = {(x, 10): 2 for x in (6, 9, 12, 15)}
                 self.boss = IronGardener()
-            else:
+            elif mirror:
                 self.walls |= {(4, 9), (16, 9), (6, 12), (14, 12), (5, 15), (15, 15)}
                 self.pits = {(3, 11), (17, 11)}
-                self.medkits, self.energy_cells = {(6, 15), (14, 15)}, {(8, 16), (12, 16)}
-                self.bow_pickups, self.pistol_pickups = set(), {(10, 15)}
+                self.medkits, self.energy_cells = {(6, 15), (14, 15), (10, 14)}, {(8, 16), (12, 16)}
+                self.bow_pickups, self.pistol_pickups = set(), set()
                 self.arrow_bundles = set()
                 self.mirror_locks = {(6, 6), (14, 6), (10, 11)}
                 self.boss = MirrorSeraph()
+            else:
+                self.walls |= {(5, 8), (15, 8), (4, 12), (16, 12), (6, 15), (14, 15)}
+                self.pits = {(3, 9), (17, 9), (4, 16), (16, 16)}
+                self.medkits, self.energy_cells = {(5, 16), (15, 16), (10, 17)}, {(10, 14)}
+                self.bow_pickups, self.pistol_pickups = {(5, 13)}, set()
+                self.arrow_bundles = {(4, 15), (16, 15)}
+                self.rail_locks = {(x, 7) for x in (7, 8, 12, 13)}
+                self.rail_covers = {origin: origin for origin in ((7, 11), (10, 13), (13, 11))}
+                self.boss = SiegeLeviathan()
             return
         cells = [(x, y) for y in range(self.config.height) for x in range(self.config.width)]
         self.rng.shuffle(cells)
@@ -300,7 +329,7 @@ class ArenaEnv:
         self._ensure_pickups_reachable()
 
     def _reachable_cells(self) -> set[tuple[int, int]]:
-        blocked = self.walls | self.fires | self.spikes | self.pits | self.barrels
+        blocked = self.walls | self.fires | self.spikes | self.pits | self.barrels | set(self.rail_covers.values())
         reachable = {self.player.position}
         frontier = [self.player.position]
         while frontier:
@@ -348,7 +377,7 @@ class ArenaEnv:
     def enemy_at(self, position: tuple[int, int]) -> Enemy | None:
         return next((enemy for enemy in self.enemies if enemy.position == position), None)
 
-    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | None:
+    def boss_at(self, position: tuple[int, int]) -> PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan | None:
         return self.boss if self.boss and self.boss.position == position else None
 
     def boss_ray(self) -> tuple[tuple[int, int], ...]:
@@ -439,7 +468,7 @@ class ArenaEnv:
         for direction in DIRECTIONS:
             target = self.add(self.player.position, direction)
             if (self.in_bounds(target) and target not in self.walls and target not in self.pits and
-                    target not in self.barrels and
+                    target not in self.barrels and target not in self.rail_covers.values() and
                     not self.enemy_at(target) and not self.boss_at(target)):
                 actions.append(Action(f"move_{direction}"))
             if self.enemy_at(target) or self.boss_at(target) or target in self.barrels:
@@ -447,11 +476,18 @@ class ArenaEnv:
             if self.enemy_at(target):
                 if self.in_bounds(self.add(target, direction)):
                     actions.append(Action(f"shove_{direction}"))
+            if target in self.rail_covers.values():
+                destination = self.add(target, direction)
+                if (self.in_bounds(destination) and destination not in self.walls | self.pits | self.barrels and
+                        destination not in self.rail_covers.values() and
+                        destination != self.player.position and not self.boss_at(destination)):
+                    actions.append(Action(f"shove_{direction}"))
             destination = self.add(target, direction)
             if (not self.player.cooldowns.get("dash", 0) and self.in_bounds(target) and
                     self.in_bounds(destination) and target not in self.walls and destination not in self.walls and
                     target not in self.pits and destination not in self.pits and
                     target not in self.barrels and destination not in self.barrels and
+                    target not in self.rail_covers.values() and destination not in self.rail_covers.values() and
                     not self.enemy_at(target) and not self.enemy_at(destination) and
                     not self.boss_at(target) and not self.boss_at(destination)):
                 actions.append(Action(f"dash_{direction}"))
@@ -526,8 +562,13 @@ class ArenaEnv:
         elif action.value.startswith("shove_"):
             direction = action.value[-1]
             enemy = self.enemy_at(self.add(self.player.position, direction))
-            assert enemy is not None
-            reward += self._push_entity(enemy, direction, events)
+            if enemy is not None:
+                reward += self._push_entity(enemy, direction, events)
+            else:
+                position = self.add(self.player.position, direction)
+                origin = next(origin for origin, cover in self.rail_covers.items() if cover == position)
+                self.rail_covers[origin] = self.add(position, direction)
+                events.append(f"rail_cover_shove:{position[0]}:{position[1]}:{direction}")
         elif action.value.startswith("shoot_"):
             weapon = "bow" if action.value.startswith("shoot_bow_") else "pistol"
             reward += self._player_shoot(weapon, action.value[-1], events)
@@ -615,7 +656,7 @@ class ArenaEnv:
             events.append("pickup_energy")
         return reward
 
-    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph,
+    def _damage_entity(self, entity: Player | Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan,
                        amount: int, events: list[str], source: str) -> float:
         if entity is self.player and self.player.invulnerable:
             events.append(f"invulnerable:{source}")
@@ -660,11 +701,11 @@ class ArenaEnv:
         return 20.0 if source in ("attack", "bow", "pistol") else 10.0
 
     def _ray_target(self, origin: tuple[int, int], direction: str,
-                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph, int] | None:
+                    range_: int) -> tuple[Enemy | PrismWarden | FurnaceHydra | StormChoir | ChronoMantis | VoidAngler | IronGardener | MirrorSeraph | SiegeLeviathan, int] | None:
         target = origin
         for distance in range(1, range_ + 1):
             target = self.add(target, direction)
-            if not self.in_bounds(target) or target in self.walls:
+            if not self.in_bounds(target) or target in self.walls or target in self.rail_covers.values():
                 return None
             enemy = self.enemy_at(target) or self.boss_at(target)
             if enemy:
@@ -728,6 +769,8 @@ class ArenaEnv:
             return self._resolve_iron(boss, events)
         if isinstance(boss, MirrorSeraph):
             return self._resolve_mirror(boss, events)
+        if isinstance(boss, SiegeLeviathan):
+            return self._resolve_siege(boss, events)
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if boss.hp <= boss.max_hp * 2 // 3 and boss.exposed_rounds == 1:
@@ -1161,6 +1204,85 @@ class ArenaEnv:
         boss.copied_action = boss.mirrored_direction = boss.target = None
         return reward
 
+    def rail_path(self) -> tuple[tuple[int, int], ...]:
+        boss = self.boss
+        if not isinstance(boss, SiegeLeviathan) or boss.rail_target is None:
+            return ()
+        return (tuple((boss.rail_target, y) for y in range(self.config.height)) if boss.rail_axis == "v"
+                else tuple((x, boss.rail_target) for x in range(self.config.width)))
+
+    def rail_cover(self) -> tuple[int, int] | None:
+        boss = self.boss
+        if not isinstance(boss, SiegeLeviathan) or boss.rail_target is None:
+            return None
+        matches = (cover for cover in self.rail_covers.values()
+                   if cover[0 if boss.rail_axis == "v" else 1] == boss.rail_target)
+        return min(matches, key=lambda cell: cell[1 if boss.rail_axis == "v" else 0], default=None)
+
+    def rail_threatens(self, position: tuple[int, int]) -> bool:
+        boss = self.boss
+        if not isinstance(boss, SiegeLeviathan) or boss.rail_target is None:
+            return False
+        if position[0 if boss.rail_axis == "v" else 1] != boss.rail_target:
+            return False
+        cover = self.rail_cover()
+        return cover is None or (position[1] < cover[1] if boss.rail_axis == "v" else position[0] < cover[0])
+
+    def _resolve_siege(self, boss: SiegeLeviathan, events: list[str]) -> float:
+        for origin, rounds in list(self.rail_rebuilds.items()):
+            if rounds > 1 or origin in self.rail_covers.values() or origin == self.player.position:
+                self.rail_rebuilds[origin] = max(1, rounds - 1)
+            else:
+                del self.rail_rebuilds[origin]
+                self.rail_covers[origin] = origin
+                events.append(f"rail_cover_rebuild:{origin[0]}:{origin[1]}")
+        if boss.exposed_rounds:
+            boss.exposed_rounds -= 1
+            if not boss.exposed_rounds:
+                boss.broken_locks.clear()
+                events.append("boss_shield_restored")
+            return 0.0
+        if boss.rail_target is None:
+            boss.rail_axis = "h" if boss.shots % 4 == 3 else "v"
+            boss.rail_target = self.player.position[1 if boss.rail_axis == "h" else 0]
+            boss.charge = 2
+            events.append(f"rail_aim:{boss.rail_axis}:{boss.rail_target}:2")
+            return 0.0
+        boss.charge -= 1
+        if boss.charge:
+            events.append(f"rail_charge:{boss.rail_axis}:{boss.rail_target}:1")
+            return 0.0
+        target, axis = boss.rail_target, boss.rail_axis
+        cover = self.rail_cover()
+        reward = 0.0
+        events.append(f"rail_fire:{axis}:{target}")
+        if self.rail_threatens(self.player.position):
+            reward += self._damage_entity(self.player, boss.rail_damage, events, "railgun")
+        if cover:
+            origin = next(origin for origin, position in self.rail_covers.items() if position == cover)
+            del self.rail_covers[origin]
+            self.rail_rebuilds[origin] = 2
+            events.append(f"rail_cover_break:{cover[0]}:{cover[1]}")
+            lock = (target, 7)
+            if axis == "v" and lock in self.rail_locks and lock not in boss.broken_locks:
+                boss.broken_locks.add(lock)
+                reward += 15
+                events.append(f"rail_lock_break:{len(boss.broken_locks)}")
+                if len(boss.broken_locks) == len(self.rail_locks):
+                    boss.exposed_rounds = 6
+                    events.append("boss_shield_break")
+        boss.shots += 1
+        boss.rail_target = None
+        for origin, position in list(self.rail_covers.items()):
+            x = ((7 + boss.shots % 2) if origin[0] == 7 else
+                 (13 - boss.shots % 2) if origin[0] == 13 else 10 + boss.shots % 2)
+            destination = (x, origin[1])
+            if destination != self.player.position and destination not in self.rail_covers.values():
+                self.rail_covers[origin] = destination
+                if destination != position:
+                    events.append(f"rail_cover_move:{position[0]}:{position[1]}:{x}:{origin[1]}")
+        return reward
+
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
         destination = self.add(enemy.position, direction)
         events.append(f"shove:{direction}")
@@ -1452,6 +1574,9 @@ class ArenaEnv:
                 damage = (self.boss.dash_damage if self.boss.copied_action.startswith("dash_")
                           else self.boss.shard_damage)
                 threats.append(("mirror_seraph/shard", damage))
+        if isinstance(self.boss, SiegeLeviathan) and self.boss.rail_target is not None and self.boss.charge <= 1:
+            if self.rail_threatens(position):
+                threats.append(("siege_leviathan/railgun", self.boss.rail_damage))
         for enemy in self.enemies:
             intent = enemy.intent
             if not intent or intent.countdown > 1:
@@ -1525,7 +1650,10 @@ class ArenaEnv:
                       self.boss.target, self.boss.attacks) if isinstance(self.boss, IronGardener) else
                      ("mirror", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.broken_locks)), self.boss.copied_action,
-                      self.boss.mirrored_direction, self.boss.target) if self.boss else None),
+                      self.boss.mirrored_direction, self.boss.target) if isinstance(self.boss, MirrorSeraph) else
+                     ("siege", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
+                      tuple(sorted(self.boss.broken_locks)), self.boss.rail_axis,
+                      self.boss.rail_target, self.boss.charge, self.boss.shots) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
             "coolant_valves": tuple(sorted(self.coolant_valves)),
             "grounding_pylons": tuple(sorted(self.grounding_pylons)),
@@ -1534,6 +1662,9 @@ class ArenaEnv:
             "gravity_nodes": tuple(sorted(self.gravity_nodes)),
             "root_plates": tuple(sorted(self.root_plates)),
             "mirror_locks": tuple(sorted(self.mirror_locks)),
+            "rail_locks": tuple(sorted(self.rail_locks)),
+            "rail_covers": tuple(sorted(self.rail_covers.items())),
+            "rail_rebuilds": tuple(sorted(self.rail_rebuilds.items())),
             "vine_seeds": tuple(sorted(self.vine_seeds.items())),
             "vine_walls": tuple(sorted(self.vine_walls)),
             "enemy_intents": tuple((enemy.enemy_type.value, enemy.position, enemy.hp,

@@ -611,5 +611,79 @@ class MirrorBossTests(unittest.TestCase):
             self.assertIn("boss_defeated", events)
 
 
+class SiegeBossTests(unittest.TestCase):
+    def test_boss_rooms_and_supplies_are_distinct(self):
+        rooms, supplies = [], []
+        for level in range(10, 81, 10):
+            env = ArenaEnv(campaign_config(level))
+            rooms.append(frozenset(env.walls))
+            supplies.append((len(env.medkits), len(env.energy_cells),
+                             len(env.arrow_bundles), len(env.bow_pickups),
+                             len(env.pistol_pickups)))
+            items = (env.medkits | env.energy_cells | env.arrow_bundles |
+                     env.bow_pickups | env.pistol_pickups)
+            self.assertTrue(items <= env._reachable_cells(), level)
+        self.assertEqual(len(set(rooms)), 8)
+        self.assertEqual(len(set(supplies)), 8)
+
+    def test_two_round_rail_warning_cover_and_rebuild(self):
+        env = ArenaEnv(campaign_config(80))
+        self.assertEqual(env.rail_locks, {(7, 7), (8, 7), (12, 7), (13, 7)})
+        self.assertEqual(len(env.rail_covers), 3)
+        self.assertIn("Boss siege", encode_state(env))
+        env.round = 3
+        env.player.position = (7, 12)
+        env.step("wait")
+        aim = env.step("wait")
+        self.assertIn("rail_aim:v:7:2", aim.events)
+        self.assertEqual(env.boss.charge, 2)
+        self.assertNotIn(("siege_leviathan/railgun", 36), env.imminent_threats())
+        env.step("wait")
+        charge = env.step("wait")
+        self.assertIn("rail_charge:v:7:1", charge.events)
+        self.assertNotIn(("siege_leviathan/railgun", 36), env.imminent_threats())
+        env.step("wait")
+        fire = env.step("wait")
+        self.assertIn("rail_lock_break:1", fire.events)
+        self.assertIn((7, 11), env.rail_rebuilds)
+        self.assertEqual(env.player.hp, 100)
+        for _ in range(4):
+            rebuild = env.step("wait")
+        self.assertIn("rail_cover_rebuild:7:11", rebuild.events)
+        self.assertEqual(env.rail_covers[(7, 11)], (7, 11))
+
+    def test_uncovered_line_damages_and_cover_can_be_shoved(self):
+        env = ArenaEnv(campaign_config(80))
+        env.round = 3
+        env.player.position = (9, 12)
+        env.boss.rail_axis = "v"
+        env.boss.rail_target = 9
+        env.boss.charge = 1
+        self.assertIn(("siege_leviathan/railgun", 36), env.imminent_threats())
+        env.step("wait")
+        fire = env.step("wait")
+        self.assertIn("damage:railgun:36", fire.events)
+        env.player.position = (7, 11)
+        self.assertIn(Action.SHOVE_E, env.legal_actions())
+        shove = env.step("shove_e")
+        self.assertIn("rail_cover_shove:8:11:e", shove.events)
+        self.assertEqual(env.rail_covers[(7, 11)], (9, 11))
+
+    def test_default_hybrid_and_rule_finish_without_damage(self):
+        for rule in (False, True):
+            env, agent = ArenaEnv(campaign_config(80)), RuleAgent()
+            events = []
+            for _ in range(200):
+                if env.done:
+                    break
+                action = (agent.act(env) if rule else
+                          select_action({action.value: 1.0 for action in env.legal_actions()}, env, "hybrid")[0])
+                events.extend(env.step(action).events)
+            self.assertTrue(env.done)
+            self.assertEqual(env.player.hp, 100)
+            self.assertEqual(events.count("boss_shield_break"), 2)
+            self.assertIn("boss_defeated", events)
+
+
 if __name__ == "__main__":
     unittest.main()

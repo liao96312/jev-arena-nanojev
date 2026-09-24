@@ -103,6 +103,20 @@ class MirrorSeraph:
     dash_damage: int = 26
     silence_rounds: int = 0
 
+
+@dataclass
+class SiegeLeviathan:
+    position: tuple[int, int] = (10, 5)
+    hp: int = 144
+    max_hp: int = 144
+    exposed_rounds: int = 0
+    broken_locks: set[tuple[int, int]] = field(default_factory=set)
+    rail_axis: str = "v"
+    rail_target: int | None = None
+    charge: int = 0
+    shots: int = 0
+    rail_damage: int = 36
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start

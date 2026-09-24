@@ -1,6 +1,6 @@
 from .entities import Action
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, StormChoir, VoidAngler
+from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
 
 
 def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
@@ -36,6 +36,8 @@ def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
             parts.append(f"reflux {len(env.boss.refluxed_roots)}->{len(simulation.boss.refluxed_roots)}")
         if isinstance(env.boss, MirrorSeraph) and simulation.boss.broken_locks != env.boss.broken_locks:
             parts.append(f"mirror_locks {len(env.boss.broken_locks)}->{len(simulation.boss.broken_locks)}")
+        if isinstance(env.boss, SiegeLeviathan) and simulation.boss.broken_locks != env.boss.broken_locks:
+            parts.append(f"rail_locks {len(env.boss.broken_locks)}->{len(simulation.boss.broken_locks)}")
         if simulation.boss.exposed_rounds and not env.boss.exposed_rounds:
             parts.append("core exposed")
         if simulation.boss.hp != env.boss.hp:
@@ -151,11 +153,12 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                         "chrono_mantis" if isinstance(enemy, ChronoMantis) else
                         "void_angler" if isinstance(enemy, VoidAngler) else
                         "iron_gardener" if isinstance(enemy, IronGardener) else
-                        "mirror_seraph" if isinstance(enemy, MirrorSeraph) else enemy.enemy_type.value)
-                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph))
+                        "mirror_seraph" if isinstance(enemy, MirrorSeraph) else
+                        "siege_leviathan" if isinstance(enemy, SiegeLeviathan) else enemy.enemy_type.value)
+                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan))
                              or enemy.exposed_rounds else enemy.hp)
                 description += f"; {kind}/{distance} hp {enemy.hp}->{remaining}"
-                if weapon == "bow" and not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph)) and enemy.hp > damage:
+                if weapon == "bow" and not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan)) and enemy.hp > damage:
                     description += "; push=1"
         consequence = _immediate_consequence(env, action)
         candidates[action.value] = description + ("; immediate: " + consequence if consequence else "")

@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, StormChoir, VoidAngler
+from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
 
 
 def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
@@ -10,7 +10,8 @@ def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> se
         if action.startswith(("move_", "dash_")):
             target = env.add(env.player.position, action[-1])
             moves[action] = env.add(target, action[-1]) if action.startswith("dash_") else target
-    blocked = set(env.walls) | set(env.pits) | set(env.barrels) | {enemy.position for enemy in env.enemies}
+    blocked = (set(env.walls) | set(env.pits) | set(env.barrels) |
+               set(env.rail_covers.values()) | {enemy.position for enemy in env.enemies})
     if targets is None:
         targets = (env.medkits if env.player.hp <= 60 and env.medkits else
                    ((env.bow_pickups if not env.player.loadout.bow else set()) |
@@ -109,7 +110,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
-    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph)):
+    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan)):
         boss = env.boss
         if boss.exposed_rounds:
             shots = {action for action in safest if action.startswith("shoot_")}
@@ -118,8 +119,16 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             strikes = {action for action in safest if action.startswith("attack_")}
             if strikes:
                 return max(sorted(strikes), key=probabilities.__getitem__), "boss_tactics"
-            targets = ({(boss.position[0], y) for y in range(7, 15)} if isinstance(boss, MirrorSeraph)
+            targets = ({(boss.position[0], y) for y in range(7, 14)} if isinstance(boss, SiegeLeviathan) else
+                       {(boss.position[0], y) for y in range(7, 15)} if isinstance(boss, MirrorSeraph)
                        else {(boss.position[0], y) for y in range(6, 17)}) - env.walls
+        elif isinstance(boss, SiegeLeviathan):
+            targets = {(cover[0], cover[1] + 1) for cover in env.rail_covers.values()
+                       if (cover[0], 7) in env.rail_locks - boss.broken_locks}
+            if not targets:
+                targets = {(10, 14)}
+            if (boss.rail_target is None or boss.rail_axis == "v" and boss.rail_target == env.player.position[0]) and env.player.position in targets and "wait" in safest:
+                return "wait", "boss_tactics"
         elif isinstance(boss, MirrorSeraph):
             if boss.copied_action is None:
                 remaining = env.mirror_locks - boss.broken_locks
