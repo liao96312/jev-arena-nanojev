@@ -1,4 +1,5 @@
 import argparse
+import random
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -67,16 +68,25 @@ def parse_level_selection(value: str) -> int | None:
 def restart_level(env, seed: int, pending):
     if pending:
         pending.cancel()
-    env.reset(seed)
+    if env.config.difficulty_level == 10:
+        old_layout = env.reflectors.copy()
+        for _ in range(12):
+            env.reset(env.seed + 1)
+            if env.reflectors != old_layout:
+                break
+    else:
+        env.reset(seed)
     return None
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--agent", choices=("random", "rule", "nanojev", "jev"), default="nanojev")
-    parser.add_argument("--seed", type=int, default=61005)
+    parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--decision-ms", type=int, default=280)
     args = parser.parse_args()
+    if args.seed is None:
+        args.seed = random.SystemRandom().randrange(2**31)
 
     save_path = Path(__file__).resolve().parents[1] / "saves" / "campaign.json"
     saved = load_campaign(save_path)
@@ -175,13 +185,15 @@ def main() -> None:
                 pending, animation, level_advance_at = None, None, 0
                 probabilities, action_name, reason = {}, "-", ""
                 last_step = now
-            animation_duration = 1000 if animation and "level_complete" in animation[3] else animation_ms
+            frame_ms = 150 if level == 40 else animation_ms
+            step_delay = max(80, round(decision_ms * .6)) if level == 40 else decision_ms
+            animation_duration = 1000 if animation and "level_complete" in animation[3] else frame_ms
             if animation and now - animation[4] >= animation_duration:
                 animation = None
             if pending and pending.done():
                 if pending_generation != generation or env.done:
                     pending = None
-                elif not paused and not animation and now - last_step >= decision_ms:
+                elif not paused and not animation and now - last_step >= step_delay:
                     try:
                         action, probabilities, latency, reason = pending.result()
                     except Exception as exc:
@@ -204,9 +216,9 @@ def main() -> None:
                 pending = executor.submit(decide, agent, env.clone())
             animation_frame = None
             if animation:
-                animation_frame = (*animation[:4], min(1, (now - animation[4]) / animation_ms))
+                animation_frame = (*animation[:4], min(1, (now - animation[4]) / frame_ms))
             renderer.draw(env, agent_name, probabilities, latency, paused or env.done, action_name,
-                          reason, animation_frame, decision_ms, level, campaign_score, error_message,
+                          reason, animation_frame, step_delay, level, campaign_score, error_message,
                           level_input)
             clock.tick(60)
     finally:

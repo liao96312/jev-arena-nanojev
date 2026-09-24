@@ -151,7 +151,7 @@ class ArenaTests(unittest.TestCase):
                 env.enemies = [Enemy((1, 2), enemy_type=enemy_type)]
                 env._plan_enemy_intents()
                 self.assertEqual((env.enemies[0].intent.kind, env.enemies[0].intent.direction),
-                                 (IntentType.MOVE, "n"))
+                                 (IntentType.SPRINT if enemy_type == EnemyType.RAZOR_HOUND else IntentType.MOVE, "n"))
 
     def test_enemies_route_around_fire_instead_of_entering_it(self):
         config = ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
@@ -163,7 +163,8 @@ class ArenaTests(unittest.TestCase):
                 env.fires = {(2, 2)}
                 env.enemies = [Enemy((1, 2), enemy_type=enemy_type)]
                 env._plan_enemy_intents()
-                self.assertEqual(env.enemies[0].intent.kind, IntentType.MOVE)
+                self.assertEqual(env.enemies[0].intent.kind,
+                                 IntentType.SPRINT if enemy_type == EnemyType.RAZOR_HOUND else IntentType.MOVE)
                 self.assertNotIn(env.add(env.enemies[0].position, env.enemies[0].intent.direction),
                                  env.fires)
 
@@ -172,6 +173,69 @@ class ArenaTests(unittest.TestCase):
         env.enemies = [Enemy((1, 2), enemy_type=EnemyType.CHARGER)]
         env._plan_enemy_intents()
         self.assertEqual(env.enemies[0].intent.kind, IntentType.MOVE)
+
+    def test_razor_hound_sprints_around_wall_without_instant_bite(self):
+        env = ArenaEnv(ArenaConfig(width=7, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, enemy_move_interval=1))
+        env.player.position = (5, 2)
+        env.walls, env.fires = {(2, 2), (3, 2)}, {(2, 3)}
+        hound = Enemy((1, 2), enemy_type=EnemyType.RAZOR_HOUND)
+        env.enemies = [hound]
+        env._plan_enemy_intents()
+        self.assertEqual(hound.intent.path, ((1, 1), (2, 1)))
+        from arena.observation import encode_state
+        self.assertIn("1,1>2,1", encode_state(env))
+        result = env.step(Action.WAIT)
+        self.assertEqual(hound.position, (2, 1))
+        self.assertEqual(env.player.hp, 100)
+        self.assertTrue(any(event.startswith("hound_sprint:1:2:1:1:2:1") for event in result.events))
+
+    def test_campaign_hounds_have_low_health_and_limited_count(self):
+        for level, count in ((4, 0), (5, 1), (14, 1), (15, 2)):
+            with self.subTest(level=level):
+                env = ArenaEnv(campaign_config(level))
+                hounds = [enemy for enemy in env.enemies if enemy.enemy_type == EnemyType.RAZOR_HOUND]
+                self.assertEqual(len(hounds), count)
+                self.assertTrue(all(enemy.max_hp <= 28 for enemy in hounds))
+
+    def test_hound_bite_is_delayed_and_player_can_block_sprint(self):
+        config = ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
+                             medkits=0, spawn_protection_rounds=2)
+        env = ArenaEnv(config)
+        env.player.position = (4, 2)
+        hound = Enemy((1, 2), enemy_type=EnemyType.RAZOR_HOUND)
+        env.enemies = [hound]
+        env._plan_enemy_intents()
+        env.step(Action.MOVE_W)
+        self.assertEqual((hound.position, env.player.position, env.player.hp), ((2, 2), (3, 2), 100))
+        self.assertEqual(hound.intent.kind, IntentType.WAIT)
+        env.step(Action.WAIT)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(hound.intent.kind, IntentType.MELEE)
+        env.step(Action.WAIT)
+        self.assertLess(env.player.hp, 100)
+
+    def test_hound_route_and_next_bite_are_visible_to_candidates(self):
+        env = ArenaEnv(ArenaConfig(width=6, height=5, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0))
+        env.player.position = (4, 2)
+        env.enemies = [Enemy((1, 2), enemy_type=EnemyType.RAZOR_HOUND)]
+        env._plan_enemy_intents()
+        self.assertEqual(env.enemies[0].intent.path, ((2, 2), (3, 2)))
+        self.assertIn("hound at (3, 2) bite next", build_candidates(env)["wait"])
+
+    def test_archer_seeks_a_firing_lane_before_closing_to_melee(self):
+        env = ArenaEnv(ArenaConfig(width=7, height=6, walls=0, enemies=0, gems=0, fires=0,
+                                   medkits=0, enemy_move_interval=1))
+        env.player.position = (5, 3)
+        archer = Enemy((1, 2), enemy_type=EnemyType.ARCHER)
+        env.enemies = [archer]
+        env._plan_enemy_intents()
+        self.assertEqual((archer.intent.kind, archer.intent.direction), (IntentType.MOVE, "s"))
+        for _ in range(3):
+            env.step(Action.WAIT)
+        self.assertEqual(archer.position, (1, 3))
+        self.assertEqual((archer.intent.kind, archer.intent.direction), (IntentType.SHOOT, "e"))
 
     def test_player_can_dodge_visible_melee_intent(self):
         env = ArenaEnv(ArenaConfig(width=5, height=5, walls=0, enemies=0, gems=0, fires=0,

@@ -45,7 +45,7 @@ try {
         }
         if (-not $ready) { throw "NanoJev 模型服务启动超时，请查看 runs\demo_service.stderr.log" }
     }
-    & $python (Join-Path $projectRoot "scripts\play_gui.py") --agent nanojev --seed 61005 --decision-ms 280
+    & $python (Join-Path $projectRoot "scripts\play_gui.py") --agent nanojev --decision-ms 280
 } finally {
     if ($serviceStarted) {
         Get-CimInstance Win32_Process | Where-Object {

@@ -37,6 +37,7 @@ class EnemyType(StrEnum):
     CHARGER = "charger"
     ARCHER = "archer"
     BOMBER = "bomber"
+    RAZOR_HOUND = "razor_hound"
 
 
 ENEMY_HP = {
@@ -44,29 +45,34 @@ ENEMY_HP = {
     EnemyType.CHARGER: 45,
     EnemyType.ARCHER: 20,
     EnemyType.BOMBER: 24,
+    EnemyType.RAZOR_HOUND: 18,
 }
 ENEMY_MELEE_BONUS = {
     EnemyType.CHASER: 0,
     EnemyType.CHARGER: 3,
     EnemyType.ARCHER: -1,
     EnemyType.BOMBER: 1,
+    EnemyType.RAZOR_HOUND: 0,
 }
 ENEMY_MOVE_DELAY = {
     EnemyType.CHASER: 0,
     EnemyType.CHARGER: 1,
     EnemyType.ARCHER: 2,
     EnemyType.BOMBER: 2,
+    EnemyType.RAZOR_HOUND: 0,
 }
 ENEMY_SPEED_LEVEL = {
     EnemyType.CHASER: 6,
     EnemyType.CHARGER: 12,
     EnemyType.ARCHER: 18,
     EnemyType.BOMBER: 24,
+    EnemyType.RAZOR_HOUND: 5,
 }
 
 
 class IntentType(StrEnum):
     MOVE = "move"
+    SPRINT = "sprint"
     MELEE = "melee"
     CHARGE = "charge"
     SHOOT = "shoot"
@@ -106,6 +112,7 @@ class Intent:
     direction: str | None = None
     countdown: int = 1
     power: int = 0
+    path: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass

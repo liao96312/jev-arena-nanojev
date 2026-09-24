@@ -4,8 +4,8 @@ from .env import ArenaEnv
 from .boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, SiegeLeviathan, StormChoir, VoidAngler
 
 
-ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
-INTENT_CODES = {"move": "m", "melee": "a", "charge": "c", "shoot": "s",
+ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B", "razor_hound": "H"}
+INTENT_CODES = {"move": "m", "sprint": "p", "melee": "a", "charge": "c", "shoot": "s",
                 "explode": "x", "wait": "w"}
 
 
@@ -49,6 +49,7 @@ def encode_state(env: ArenaEnv) -> str:
         f"{env._distance(env.player.position, enemy.position)}/h{enemy.hp}/"
         f"{INTENT_CODES[enemy.intent.kind.value]}{enemy.intent.direction or ''}"
         f"@{enemy.intent.countdown}"
+        f"{':' + '>'.join(f'{x},{y}' for x, y in enemy.intent.path) if enemy.intent.path else ''}"
         for enemy in tactical_enemies if enemy.intent
     ) or "none"
     memory = env.last_action or "none"
@@ -78,29 +79,38 @@ def encode_state(env: ArenaEnv) -> str:
                 f"burns={len(env.furnace_burns)} "
                 f"valves={sorted(env.boss.valves_opened)}/3 exposed={env.boss.exposed_rounds} "
                 f"attack={env.boss.attack_kind} aim={env.boss.target or 'none'} "
+                f"wave_cols={env.boss.wave_columns} rapid={int(env.boss.wave_rapid)} "
                 f"dmg=wave{env.boss.wave_damage}/fireball{env.boss.fireball_damage} "
-                f"coolant={sorted(env.coolant_valves)} summons={env.boss.summons}/1.")
+                 f"coolant={sorted(env.coolant_valves)} side-attack aimed valve to open; "
+                 f"summons={env.boss.summons}/3.")
     elif isinstance(env.boss, StormChoir):
         boss = (f" Boss storm@{env.boss.position} hp={env.boss.hp} exposed={env.boss.exposed_rounds} "
                 f"phase={2 if env.boss.hp <= env.boss.max_hp * 2 // 3 else 1} "
-                f"{env.boss.attack_kind} aim={env.boss.target or '-'} "
+                f"{env.boss.attack_kind} aim={env.boss.target or '-'} net={env.boss.net_target or '-'} "
                 f"links={max(0, len(env.storm_chain()) - 2)}/4 "
-                f"relay={sorted(env.relay_pads)} arc{env.boss.arc_damage}/surge{env.boss.surge_damage}.")
+                 f"relay={sorted(env.relay_pads)} last_ground={env.boss.last_ground_pad or '-'} "
+                 f"EMP near relay during chain aim shorts it; "
+                 f"arc{env.boss.arc_damage}/surge{env.boss.surge_damage}.")
     elif isinstance(env.boss, ChronoMantis):
         boss = (f" Boss chrono@{env.boss.position} hp={env.boss.hp} exposed={env.boss.exposed_rounds} "
                 f"stage={2 if env.boss.hp <= env.boss.max_hp * 2 // 3 else 1} "
-                f"phase={env.boss.phase} slash={env.boss.slash_target or '-'} "
-                f"leap={env.boss.leap_target or '-'} anchor={sorted(env.time_anchors)} "
+                f"phase={env.boss.phase} slow={env.boss.slow_rounds} slash={env.boss.slash_target or '-'} "
+                 f"leap={env.boss.leap_target or '-'} primed={env.boss.primed_anchor or '-'} "
+                 f"retreat={env.boss.retreat_target or '-'} "
+                f"anchor={sorted(env.time_anchors)} "
                 f"dmg=slash{env.boss.slash_damage}/leap{env.boss.leap_damage}/"
                 f"echo{env.boss.echo_damage}.")
     elif isinstance(env.boss, VoidAngler):
         boss = (f" Boss void@{env.boss.position} hp={env.boss.hp} armor={len(env.boss.drained_nodes)}/3 "
-                f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
-                f"nodes={sorted(env.gravity_nodes - env.boss.drained_nodes)} beam{env.boss.beam_damage}.")
+                 f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
+                 f"nodes={sorted(env.gravity_nodes - env.boss.drained_nodes)} "
+                 f"adjacent attack can cut aimed mine; "
+                f"hooked={env.hooked_actions} beam{env.boss.beam_damage}/hook{env.boss.hook_damage}.")
     elif isinstance(env.boss, IronGardener):
         boss = (f" Boss iron@{env.boss.position} hp={env.boss.hp} reflux={len(env.boss.refluxed_roots)}/4 "
                 f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
-                f"roots={sorted(env.root_plates - {(x, 12) for x in env.boss.refluxed_roots})} "
+                 f"roots={sorted(env.root_plates - {(x, 12) for x in env.boss.refluxed_roots})} "
+                 f"adjacent attack can cut aimed mature vine; "
                 f"flame{env.boss.flame_damage}/thorn{env.boss.thorn_damage} summons={env.boss.summons}/1.")
     elif isinstance(env.boss, MirrorSeraph):
         boss = (f" Boss mirror@{env.boss.position} hp={env.boss.hp} "
@@ -108,17 +118,24 @@ def encode_state(env: ArenaEnv) -> str:
                 f"exposed={env.boss.exposed_rounds} copy={env.boss.copied_action or '-'} "
                 f"mirror_dir={env.boss.mirrored_direction or '-'} target={env.boss.target or '-'} "
                 f"echo={env.boss.echo_target or '-'} "
+                f"echo_cells={sorted(env.mirror_echo_cells()) if env.boss.echo_target else '-'} "
+                f"evade={int(env.boss.evade_ready)} "
+                f"emp_jammed={int(env.boss.emp_jammed)} clones="
+                f"{[(enemy.summoned_by, enemy.position) for enemy in env.enemies if enemy.summoned_by and enemy.summoned_by.startswith('mirror_')]} "
                 f"shard{env.boss.shard_damage}/dash{env.boss.dash_damage}/echo{env.boss.echo_damage}.")
     elif isinstance(env.boss, SiegeLeviathan):
         boss = (f" Boss siege@{env.boss.position} hp={env.boss.hp} "
                 f"locks={sorted(env.rail_locks - env.boss.broken_locks)} "
                 f"exposed={env.boss.exposed_rounds} rail={env.boss.rail_axis}:"
                 f"{env.boss.rail_target if env.boss.rail_target is not None else '-'} "
-                f"charge={env.boss.charge} covers={sorted(env.rail_covers.values())} "
-                f"rebuild={sorted(env.rail_rebuilds.items())} dmg={env.boss.rail_damage}.")
+                f"charge={env.boss.charge} rush={env.boss.charge_target or '-'} "
+                f"covers={sorted(env.rail_covers.values())} "
+                f"rebuild={sorted(env.rail_rebuilds.items())} "
+                f"blast={env.boss.blast_kind}:{env.boss.blast_target or '-'} "
+                f"pits={sorted(env.siege_pits.items())} dmg={env.boss.rail_damage}.")
     elif isinstance(env.boss, NullWeaver):
         boss = (f" Boss null@{env.boss.position} hp={env.boss.hp} "
-                f"nodes={env.boss.node_index}/4 order={env.null_nodes} "
+                 f"nodes={env.boss.node_index}/4 order={env.null_nodes} adjacent attack also activates; "
                 f"exposed={env.boss.exposed_rounds} blocked={env.boss.blocked_kind or '-'} "
                 f"erase={sorted(env.boss.erase_targets)} countdown={env.boss.erase_countdown} "
                 f"warp={env.boss.warp_target or '-'} void={sorted(env.null_void)} "
@@ -130,7 +147,7 @@ def encode_state(env: ArenaEnv) -> str:
                 f"target={env.boss.target or '-'} countdown={env.boss.countdown} "
                 f"danger={sorted(env.boss.danger)} cage={sorted(env.apex_cage)} "
                 f"gate={env.boss.gate or '-'} appeal={env.boss.appeal or '-'} "
-                f"finale={env.boss.finale_cycles}.")
+                 f"finale={env.boss.finale_cycles} appeal_mark={int(env.boss.appeal_ready)}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
@@ -140,7 +157,8 @@ def encode_state(env: ArenaEnv) -> str:
                 f"aim={target if target else 'none'} "
                 f"lunge={env.boss.lunge_target or 'none'} "
                 f"dmg=beam{env.boss.beam_damage}/lunge{env.boss.lunge_damage} "
-                f"mirrors={sorted(env.reflectors - env.boss.used_reflectors)}.")
+                f"mirrors={sorted(env.reflectors - env.boss.used_reflectors)} "
+                f"recharge={env.boss.reflector_regen}.")
     return (
         f"HP={env.player.hp}/100 score={env.score} pos={env.player.position[0]},{env.player.position[1]} "
         f"r={env.round} ap={env.ap_remaining}/{env.config.action_points} "

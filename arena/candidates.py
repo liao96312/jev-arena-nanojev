@@ -1,4 +1,4 @@
-from .entities import Action
+from .entities import Action, EnemyType, IntentType
 from .env import ArenaEnv
 from .boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
 
@@ -51,6 +51,10 @@ def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
     threats = simulation.imminent_threats()
     if threats:
         parts.append(f"next_damage={sum(power for _, power in threats)}")
+    for enemy in simulation.enemies:
+        if (enemy.enemy_type == EnemyType.RAZOR_HOUND and enemy.intent and
+                enemy.intent.kind == IntentType.MELEE):
+            parts.append(f"hound at {enemy.position} bite next")
     if result.done:
         parts.append("terminal")
     return "; ".join(parts)

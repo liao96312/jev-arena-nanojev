@@ -4,17 +4,28 @@ from types import SimpleNamespace
 
 import pygame
 
-from arena import ArenaConfig, ArenaEnv
+from arena import ArenaConfig, ArenaEnv, campaign_config
+from arena.renderer import boss_travel_progress
 from scripts.play_gui import keyboard_command, parse_level_selection, restart_level, switch_agent
 
 
 class GuiControlTests(unittest.TestCase):
+    def test_boss_rush_finishes_before_normal_reposition(self):
+        self.assertEqual(boss_travel_progress(0, True, 5), 0)
+        self.assertEqual(boss_travel_progress(0.58, True, 5), 1)
+        self.assertLess(boss_travel_progress(0.58, False, 5), 1)
+        self.assertEqual(boss_travel_progress(0.62, False, 5), 1)
+        self.assertLess(boss_travel_progress(0.62, False, 1), 1)
+
     def test_all_planned_boss_assets_are_loadable(self):
         root = Path(__file__).resolve().parents[1] / "assets" / "sprites"
         assets = list(root.glob("boss_*.png")) + list(root.glob("effect_boss_*.png"))
         self.assertEqual((len(list(root.glob("boss_*.png"))),
                           len(list(root.glob("effect_boss_*.png")))), (10, 10))
         self.assertTrue(all(pygame.image.load(asset).get_size() == (1254, 1254) for asset in assets))
+        cast_sheet = pygame.image.load(root / "storm_choir_cast_sheet.png")
+        self.assertEqual(cast_sheet.get_size(), (1254, 1254))
+        self.assertNotEqual(cast_sheet.get_masks()[3], 0)
 
     def test_restart_and_keyboard_alternatives(self):
         self.assertEqual(keyboard_command(pygame, SimpleNamespace(key=pygame.K_r, unicode="r")), "restart")
@@ -41,6 +52,12 @@ class GuiControlTests(unittest.TestCase):
         self.assertIsNone(restart_level(env, 7, pending))
         self.assertTrue(pending.cancelled)
         self.assertEqual((env.tick, env.done, env.player.hp, env.seed), (0, False, 100, 7))
+
+    def test_prism_restart_changes_mirror_layout(self):
+        env = ArenaEnv(campaign_config(10))
+        old_layout = env.reflectors.copy()
+        restart_level(env, 0, None)
+        self.assertNotEqual(env.reflectors, old_layout)
 
     def test_switching_to_local_agent_cancels_pending_decision(self):
         pending = SimpleNamespace(cancelled=False)

@@ -15,6 +15,7 @@ class PrismWarden:
     lunge_used: bool = False
     shots_fired: int = 0
     sweep: bool = False
+    reflector_regen: int = 0
     beam_damage: int = 14
     lunge_damage: int = 24
 
@@ -22,8 +23,8 @@ class PrismWarden:
 @dataclass
 class FurnaceHydra:
     position: tuple[int, int] = (10, 7)
-    hp: int = 105
-    max_hp: int = 105
+    hp: int = 120
+    max_hp: int = 120
     exposed_rounds: int = 0
     valves_opened: set[int] = field(default_factory=set)
     target: tuple[int, int] | None = None
@@ -33,19 +34,26 @@ class FurnaceHydra:
     summons: int = 0
     wave_damage: int = 22
     fireball_damage: int = 16
+    wave_columns: tuple[int, ...] = ()
+    wave_rapid: bool = False
+    combo_queued: bool = False
+    non_wave_streak: int = 0
 
 
 @dataclass
 class StormChoir:
     position: tuple[int, int] = (10, 5)
-    hp: int = 132
-    max_hp: int = 132
+    hp: int = 156
+    max_hp: int = 156
     exposed_rounds: int = 0
     target: tuple[int, int] | None = None
     attack_kind: str = "chain"
     attacks: int = 0
     arc_damage: int = 14
     surge_damage: int = 26
+    net_target: tuple[int, int] | None = None
+    net_damage: int = 12
+    last_ground_pad: tuple[int, int] | None = None
 
 
 @dataclass
@@ -57,31 +65,35 @@ class ChronoMantis:
     phase: str = "flank"
     slash_target: tuple[int, int] | None = None
     leap_target: tuple[int, int] | None = None
+    primed_anchor: tuple[int, int] | None = None
+    retreat_target: tuple[int, int] | None = None
     leap_countdown: int = 0
     moves: int = 0
     slash_damage: int = 24
     echo_damage: int = 18
     leap_damage: int = 30
+    slow_rounds: int = 0
 
 
 @dataclass
 class VoidAngler:
     position: tuple[int, int] = (10, 6)
-    hp: int = 108
-    max_hp: int = 108
+    hp: int = 132
+    max_hp: int = 132
     exposed_rounds: int = 0
     drained_nodes: set[tuple[int, int]] = field(default_factory=set)
     target: tuple[int, int] | None = None
     attack_kind: str = "mine"
     attacks: int = 0
     beam_damage: int = 22
+    hook_damage: int = 18
 
 
 @dataclass
 class IronGardener:
     position: tuple[int, int] = (10, 6)
-    hp: int = 108
-    max_hp: int = 108
+    hp: int = 120
+    max_hp: int = 120
     exposed_rounds: int = 0
     refluxed_roots: set[int] = field(default_factory=set)
     target: tuple[int, int] | None = None
@@ -95,8 +107,8 @@ class IronGardener:
 @dataclass
 class MirrorSeraph:
     position: tuple[int, int] = (10, 6)
-    hp: int = 168
-    max_hp: int = 168
+    hp: int = 192
+    max_hp: int = 192
     exposed_rounds: int = 0
     broken_locks: set[tuple[int, int]] = field(default_factory=set)
     copied_action: str | None = None
@@ -107,13 +119,17 @@ class MirrorSeraph:
     dash_damage: int = 26
     echo_damage: int = 14
     silence_rounds: int = 0
+    evade_ready: bool = False
+    evaded: bool = False
+    emp_jammed: bool = False
+    clones_spawned: bool = False
 
 
 @dataclass
 class SiegeLeviathan:
     position: tuple[int, int] = (10, 5)
-    hp: int = 144
-    max_hp: int = 144
+    hp: int = 168
+    max_hp: int = 168
     exposed_rounds: int = 0
     broken_locks: set[tuple[int, int]] = field(default_factory=set)
     rail_axis: str = "v"
@@ -121,13 +137,16 @@ class SiegeLeviathan:
     charge: int = 0
     shots: int = 0
     rail_damage: int = 36
+    blast_target: tuple[int, int] | None = None
+    blast_kind: str = "cross"
+    charge_target: tuple[int, int] | None = None
 
 
 @dataclass
 class NullWeaver:
     position: tuple[int, int] = (10, 5)
-    hp: int = 168
-    max_hp: int = 168
+    hp: int = 184
+    max_hp: int = 184
     exposed_rounds: int = 0
     node_index: int = 0
     blocked_kind: str | None = None
@@ -153,6 +172,7 @@ class ApexArbiter:
     gate_broken: bool = False
     finale_cycles: int = 0
     appeal: tuple[int, int] | None = None
+    appeal_ready: bool = False
 
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
