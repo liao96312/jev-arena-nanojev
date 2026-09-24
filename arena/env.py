@@ -585,6 +585,8 @@ class ArenaEnv:
                 events.append("furnace_phase_two")
             if isinstance(entity, StormChoir) and entity.hp > 0 and entity.hp <= entity.max_hp * 2 // 3 < entity.hp + actual:
                 events.append("storm_phase_two")
+            if isinstance(entity, ChronoMantis) and entity.hp > 0 and entity.hp <= entity.max_hp * 2 // 3 < entity.hp + actual:
+                events.append("chrono_phase_two")
             if entity.hp <= 0:
                 self.boss = None
                 self.kills += 1
@@ -860,7 +862,14 @@ class ArenaEnv:
     def _resolve_chrono(self, boss: ChronoMantis, events: list[str]) -> float:
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
+            if boss.hp <= boss.max_hp * 2 // 3 and boss.exposed_rounds == 2:
+                previous = boss.position
+                boss.position = (boss.position[0] + (1 if boss.position[0] <= 10 else -1), 7)
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:7")
             if not boss.exposed_rounds:
+                if boss.hp <= boss.max_hp * 2 // 3 and self.time_anchors != {(9, 13), (14, 13)}:
+                    self.time_anchors = {(9, 13), (14, 13)}
+                    events.append("chrono_anchor_shift")
                 boss.phase = "flank"
                 events.append("boss_shield_restored")
             return 0.0
@@ -913,7 +922,7 @@ class ArenaEnv:
         events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:7")
         events.append(f"chrono_leap:{boss.position[0]}:7")
         reward = 0.0
-        if self.player.position == (boss.position[0], 11):
+        if self.player.position in self.time_anchors and self.player.position[0] == boss.position[0]:
             boss.exposed_rounds = 4
             events.extend(("chrono_anchor", "chrono_echo_replay", "boss_shield_break"))
             reward += 15

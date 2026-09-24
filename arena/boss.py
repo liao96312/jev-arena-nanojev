@@ -50,8 +50,8 @@ class StormChoir:
 @dataclass
 class ChronoMantis:
     position: tuple[int, int] = (10, 7)
-    hp: int = 120
-    max_hp: int = 120
+    hp: int = 168
+    max_hp: int = 168
     exposed_rounds: int = 0
     phase: str = "flank"
     slash_target: tuple[int, int] | None = None

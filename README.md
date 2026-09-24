@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-120%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-121%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -41,7 +41,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 | 首个 Boss | 第 10 关棱镜守卫：4 根错位镜柱每轮护盾只能各用一次；诱导 3 次不同反射破盾，躲开有预告的突进，再攻击核心 |
 | 第二只 Boss | 第 20 关熔炉三头机：105 点生命，半血后二阶段熔岩波扩至三列、火球短暂点燃地面；冷却阀仍可化解对应主火线，三阀完成后攻击核心 |
 | 第三只 Boss | 第 30 关风暴合唱环：132 点生命，降至三分之二血量后导电位从中间移到两翼；四柱接地后回灌破盾，二阶段雷爆伤害更高，再用手枪攻击核心 |
-| 第四只 Boss | 第 40 关时序螳螂：横切 2 格、预告后跃迁 3 格；近斩和延迟残影有独立伤害，站上对应时间锚使残影回放破盾 |
+| 第四只 Boss | 第 40 关时序螳螂：168 点生命，横切和预告跃迁；降至三分之二血量后时间锚后移、核心开放时换位，站上对应时间锚使残影回放破盾 |
 
 第 10 关 Boss 实机画面（紫色实线与亮格为实际攻击路径，镜柱可反射弹体）：
 
@@ -66,6 +66,8 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 第 40 关时序螳螂首版的跃迁落点、旧残影危险格和时间锚预警：
 
 ![第 40 关时序螳螂](assets/screenshots/boss_chrono_mantis.png)
+
+二阶段时间锚移到后方通道，玩家需要重新找踩锚和输出路线；若弹药耗尽，混合策略也能在核心开放时近战补刀。
 
 默认 NanoJev 混合策略会在锁定近斩时闪避、去对应时间锚诱导 Boss 跃迁并破盾。螳螂现会按玩家横向位置改换起跳侧翼，蓄力时再向前压近 1 格，但不会临时改变预告落点。第 10、20、30、40 关均以击败 Boss 通关；第 50～100 关 Boss 仍是[设计规划](JEV_ARENA_BOSS_ROADMAP.md)。
 
@@ -180,7 +182,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **120 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **121 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

@@ -765,6 +765,8 @@ class ArenaRenderer:
             elif event.startswith("storm_surge:"): labels.append("高压雷爆！")
             elif event == "storm_grounded": labels.append("四柱接地回灌：核心开放！")
             elif event.startswith("chrono_slash_aim:"): labels.append("时序近斩预警：离开红色范围！")
+            elif event == "chrono_phase_two": labels.append("时序螳螂进入二阶段！")
+            elif event == "chrono_anchor_shift": labels.append("时间锚移到后方通道！")
             elif event.startswith("chrono_slash:"): labels.append("时序螳螂近斩！")
             elif event.startswith("chrono_leap_aim:"): labels.append("跃迁落点已锁定：去对应时间锚！")
             elif event.startswith("chrono_leap_charge:"): labels.append("跃迁蓄力：落点不再改变！")

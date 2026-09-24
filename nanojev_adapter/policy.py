@@ -115,6 +115,9 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             shots = {action for action in safest if action.startswith("shoot_")}
             if shots:
                 return max(sorted(shots), key=probabilities.__getitem__), "boss_tactics"
+            strikes = {action for action in safest if action.startswith("attack_")}
+            if strikes:
+                return max(sorted(strikes), key=probabilities.__getitem__), "boss_tactics"
             targets = {(boss.position[0], y) for y in range(6, 17)} - env.walls
         elif isinstance(boss, PrismWarden):
             targets = env.prism_baits()
@@ -139,7 +142,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
                 return "wait", "boss_tactics"
         else:
             landing_x = env.chrono_landing_x()
-            targets = {(landing_x, 11)}
+            targets = {anchor for anchor in env.time_anchors if anchor[0] == landing_x}
             if env.player.position in targets and "wait" in safest and boss.phase != "slash":
                 return "wait", "boss_tactics"
         routes = _gem_route_actions(env, probabilities, targets) & safest

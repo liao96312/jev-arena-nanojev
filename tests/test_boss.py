@@ -399,8 +399,41 @@ class ChronoBossTests(unittest.TestCase):
             events.extend(env.step(choice).events)
         self.assertTrue(env.done)
         self.assertEqual(env.player.hp, 100)
-        self.assertEqual(events.count("chrono_anchor"), 2)
+        self.assertEqual(events.count("chrono_anchor"), 3)
+        self.assertIn("chrono_phase_two", events)
+        self.assertIn("chrono_anchor_shift", events)
         self.assertIn("boss_defeated", events)
+
+    def test_phase_two_moves_anchor_and_melee_can_finish_core(self):
+        env = ArenaEnv(campaign_config(40))
+        env.round = 3
+        env.boss.hp = 100
+        env.boss.position = (9, 7)
+        env.boss.exposed_rounds = 3
+        for _ in range(6):
+            result = env.step(Action.WAIT)
+        self.assertIn("chrono_anchor_shift", result.events)
+        self.assertEqual(env.time_anchors, {(9, 13), (14, 13)})
+        self.assertEqual(env.boss.position, (10, 7))
+        self.assertTrue(env.time_anchors <= env._reachable_cells())
+
+        env.boss.phase = "leap"
+        env.boss.leap_target = (9, 7)
+        env.boss.leap_countdown = 1
+        env.player.position = (9, 13)
+        env.step(Action.WAIT)
+        leap = env.step(Action.WAIT)
+        self.assertIn("chrono_anchor", leap.events)
+
+        env.boss.position = (9, 7)
+        env.boss.hp = 20
+        env.boss.exposed_rounds = 2
+        env.player.position = (9, 8)
+        env.player.loadout.energy = 0
+        scores = {action.value: 1.0 for action in env.legal_actions()}
+        choice, _ = select_action(scores, env, "hybrid")
+        self.assertEqual(choice, "attack_n")
+        self.assertIn("boss_defeated", env.step(choice).events)
 
     def test_rule_agent_can_finish_mantis_without_damage(self):
         env, agent = ArenaEnv(campaign_config(40)), RuleAgent()
