@@ -853,6 +853,73 @@ class ApexBossTests(unittest.TestCase):
             self.assertEqual(env._distance(position, env.boss.appeal), 1)
             self.assertNotIn(env.boss.appeal, env.boss.danger)
 
+    def test_finale_combos_cap_overlap_damage_at_36(self):
+        for cycle, position, source in ((0, (3, 9), "apex_cage_barrage"),
+                                        (1, (10, 12), "apex_charge_gravity")):
+            env = ArenaEnv(campaign_config(100))
+            env.boss.seals = 4
+            env.boss.finale_cycles = cycle
+            env.player.position = position
+            events = []
+            for _ in range(3):
+                env._resolve_apex(env.boss, events)
+            self.assertIn(f"damage:{source}:36", events)
+            self.assertEqual(env.player.hp, 64)
+            self.assertEqual(env.boss.exposed_rounds, 0)
+
+    def test_charge_path_stops_at_room_terrain(self):
+        env = ArenaEnv(campaign_config(100))
+        env.boss.seals = 2
+        env.player.position = (6, 18)
+        events = []
+        env._resolve_apex(env.boss, events)
+        self.assertNotIn(env.player.position, env.boss.danger)
+        env._resolve_apex(env.boss, events)
+        self.assertEqual(env.player.hp, 100)
+
+    def test_finale_combos_have_walking_escape_from_every_reachable_tile(self):
+        base = ArenaEnv(campaign_config(100))
+        for position in base._reachable_cells() - {base.boss.position}:
+            cage = base.clone()
+            cage.round = 3
+            cage.player.position = position
+            cage.boss.seals = 4
+            cage._resolve_apex(cage.boss, [])
+            cage._resolve_apex(cage.boss, [])
+            gate = cage.boss.gate
+            direction = next((d for d in "nsew" if cage.add(position, d) == gate), None)
+            self.assertIsNotNone(direction, position)
+            self.assertIn(f"attack_{direction}", {a.value for a in cage.legal_actions()})
+            cage.step(f"attack_{direction}")
+            self.assertIn(f"move_{direction}", {a.value for a in cage.legal_actions()})
+            cage.step(f"move_{direction}")
+            self.assertEqual(cage.player.hp, 100, position)
+
+            rush = base.clone()
+            rush.round = 3
+            rush.player.position = position
+            rush.boss.seals = 4
+            rush.boss.finale_cycles = 1
+            rush._resolve_apex(rush.boss, [])
+            rush._resolve_apex(rush.boss, [])
+            safe = False
+            for first in rush.legal_actions():
+                if not (first.value.startswith("move_") or first == Action.WAIT):
+                    continue
+                after_first = rush.clone()
+                after_first.step(first)
+                for second in after_first.legal_actions():
+                    if not (second.value.startswith("move_") or second == Action.WAIT):
+                        continue
+                    after_second = after_first.clone()
+                    after_second.step(second)
+                    if after_second.player.hp == 100:
+                        safe = True
+                        break
+                if safe:
+                    break
+            self.assertTrue(safe, position)
+
     def test_default_hybrid_and_rule_finish(self):
         for rule in (False, True):
             env, agent = ArenaEnv(campaign_config(100)), RuleAgent()

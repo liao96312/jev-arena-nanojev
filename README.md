@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-145%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-148%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -115,11 +115,15 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 
 ![第 100 关顶点裁决者雷幕预警](assets/screenshots/boss_apex_barrage.png)
 
-顶点裁决者有 216 点生命。牢笼灌火 26、弹雨 16、镜冲 32、引力爆发 24 点伤害，各自有提前预警和不同的反制条件；四印点亮后核心开放 6 回合。首次窗口未击败时，Boss 在雷幕和镜冲之后施放专属「终审判词」：黄色区域将造成 36 点伤害；站上白色上诉位可将判词反弹并再次破盾，单纯跑出危险区只能保命。房内提供 3 个血包、3 个能量弹匣、弓和 2 组箭束；默认混合策略与规则策略均已通过固定场景无伤通关测试。
+顶点裁决者有 216 点生命。牢笼灌火 26、弹雨 16、镜冲 32、引力爆发 24 点伤害，各自有提前预警和不同的反制条件；四印点亮后核心开放 6 回合。首次窗口未击败时，Boss 连续施放「熔锁雷幕」「镜冲引力」两组同屏合招，再施放专属「终审判词」。两招重叠时单轮伤害封顶 36：前者要打碎白门后进入安全列，后者要同时离开紫色冲撞线和绿色爆心。判词的黄色区域会造成 36 点伤害；站上白色上诉位可反弹并再次破盾，单纯跑出危险区只能保命。房内提供 3 个血包、3 个能量弹匣、弓和 2 组箭束；默认混合策略与规则策略均已通过固定场景无伤通关测试。
+
+![第 100 关熔锁雷幕双招预警](assets/screenshots/boss_apex_cage_barrage.png)
+
+![第 100 关镜冲引力双招预警](assets/screenshots/boss_apex_charge_gravity.png)
 
 ![第 100 关终审判词与白色上诉位](assets/screenshots/boss_apex_verdict.png)
 
-**这仍是终章首版**：同屏双法则合招、Boss 独立弹体/受击/死亡逐帧动画及专属胜利结算仍在[制作规划](JEV_ARENA_BOSS_ROADMAP.md)中。
+**这仍是终章首版**：Boss 的独立弹体、受击/死亡逐帧动画和专属胜利结算仍在[制作规划](JEV_ARENA_BOSS_ROADMAP.md)中。
 
 第 10～100 关 Boss 房的外轮廓与补给组合各不相同；关键道具均经可达性检查。
 

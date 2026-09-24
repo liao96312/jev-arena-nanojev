@@ -135,7 +135,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
                        {(boss.position[0], y) for y in range(7, 15)} if isinstance(boss, MirrorSeraph)
                        else {(boss.position[0], y) for y in range(6, 17)}) - env.walls
         elif isinstance(boss, ApexArbiter):
-            if boss.seals == 0 and boss.countdown:
+            if (boss.seals == 0 or boss.kind == "cage_barrage") and boss.countdown:
                 if boss.gate in env.apex_cage:
                     direction = next((direction for direction in ("n", "s", "w", "e")
                                       if env.add(env.player.position, direction) == boss.gate), None)

@@ -258,11 +258,11 @@ class ArenaRenderer:
             apex = isinstance(env.boss, ApexArbiter)
             if apex:
                 rush = next((event.split(":") for event in events
-                             if event.startswith("apex_fire:charge:")), None)
+                             if event.startswith(("apex_fire:charge:", "apex_fire:charge_gravity:"))), None)
                 if rush:
                     travel = 2 * progress if progress <= .5 else 2 * (1 - progress)
-                    boss_position = (env.boss.position[0] + (int(rush[2]) - env.boss.position[0]) * travel,
-                                     env.boss.position[1] + (int(rush[3]) - env.boss.position[1]) * travel)
+                    boss_position = (env.boss.position[0] + (int(rush[5]) - env.boss.position[0]) * travel,
+                                     env.boss.position[1] + (int(rush[6]) - env.boss.position[1]) * travel)
             self._sprite(boss_position, "boss_apex_arbiter" if apex else
                          "boss_null_weaver" if null else
                          "boss_siege_leviathan" if siege else
@@ -292,14 +292,17 @@ class ArenaRenderer:
                 if fired:
                     effect = {"cage": "effect_boss_magma_wave", "barrage": "effect_boss_chain_lightning",
                               "charge": "effect_boss_mirror_shards", "gravity": "effect_boss_gravity_vortex",
-                              "verdict": "effect_boss_law_convergence"}[fired[1]]
-                    if fired[1] == "barrage":
-                        safe = (0 if env.boss.seals < 4 else
-                                ((env.boss.finale_cycles - 1) // 2 + 1) % 3)
+                              "verdict": "effect_boss_law_convergence",
+                              "cage_barrage": "effect_boss_law_convergence",
+                              "charge_gravity": "effect_boss_law_convergence"}[fired[1]]
+                    if fired[1] in ("barrage", "cage_barrage"):
+                        safe = (int(fired[4]) if fired[1] == "cage_barrage" else 0)
                         for y in (6, 9, 12, 15):
                             for x in range(2, 18):
                                 if x % 3 != safe and (x, y) not in env.walls | env.pits:
-                                    self._sprite((x, y), effect)
+                                    self._sprite((x, y), "effect_boss_chain_lightning")
+                        if fired[1] == "cage_barrage":
+                            self._sprite((int(fired[2]), int(fired[3])), effect)
                     else:
                         self._sprite((int(fired[2]), int(fired[3])), effect)
             if any(event.startswith("boss_hit:") for event in events):
@@ -513,11 +516,18 @@ class ArenaRenderer:
                                (249, 170, 215), small=True)
             if isinstance(env.boss, ApexArbiter) and not env.boss.exposed_rounds:
                 names = {"cage": "熔锁牢笼", "barrage": "雷幕弹雨", "charge": "镜面冲撞",
-                         "gravity": "坍缩漩涡", "verdict": "终审判词"}
+                         "gravity": "坍缩漩涡", "verdict": "终审判词",
+                         "cage_barrage": "熔锁雷幕", "charge_gravity": "镜冲引力"}
                 self._text(f"当前法则：{names[env.boss.kind]} · 预警 {env.boss.countdown}",
                            left, 289, (255, 215, 167), small=True)
                 if env.boss.kind == "verdict" and env.boss.countdown:
                     self._text("踩白色上诉位反弹判词；黄格会受伤", left, 312,
+                               (219, 255, 210), small=True)
+                elif env.boss.kind == "cage_barrage" and env.boss.countdown:
+                    self._text("打碎白门后进安全列；双击伤害封顶 36", left, 312,
+                               (211, 233, 255), small=True)
+                elif env.boss.kind == "charge_gravity" and env.boss.countdown:
+                    self._text("紫色冲撞＋绿色爆心：离开两区", left, 312,
                                (219, 255, 210), small=True)
         self._text(f"智能体：{AGENT_NAMES.get(agent, agent)}", left, 55, colors["muted"])
         self._text(f"动作：{ACTION_NAMES.get(action, action)}", left, 80, colors["text"])
@@ -806,7 +816,8 @@ class ArenaRenderer:
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
             palette = {"cage": (255, 137, 63), "barrage": (98, 197, 255),
                        "charge": (222, 133, 255), "gravity": (112, 237, 157),
-                       "verdict": (255, 216, 112)}
+                       "verdict": (255, 216, 112), "cage_barrage": (98, 197, 255),
+                       "charge_gravity": (222, 133, 255)}
             color = palette[env.boss.kind]
             for x, y in env.boss.danger:
                 self.pg.draw.rect(overlay, (*color, 115 if env.boss.countdown == 1 else 65),
@@ -822,6 +833,10 @@ class ArenaRenderer:
                 center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
                 self.pg.draw.circle(overlay, (248, 255, 220, 240), center, 14, 4)
                 self.pg.draw.circle(overlay, (128, 255, 216, 200), center, 7)
+            if env.boss.kind == "charge_gravity" and env.boss.target:
+                x, y = env.boss.target
+                center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
+                self.pg.draw.circle(overlay, (128, 255, 169, 210), center, self.CELL + 3, 3)
             self.screen.blit(overlay, (0, 0))
             return
         if isinstance(env.boss, NullWeaver):
@@ -1160,6 +1175,8 @@ class ArenaRenderer:
             elif event == "null_reverse_write": labels.append("逆向写入完成：核心开放！")
             elif event.startswith("null_block:"): labels.append("Boss 封锁了一类动作，查看右侧提示！")
             elif event.startswith("apex_aim:verdict:"): labels.append("终审判词：踩白色上诉位反弹伤害！")
+            elif event.startswith("apex_aim:cage_barrage:"): labels.append("熔锁雷幕：破白门，躲蓝色弹幕！")
+            elif event.startswith("apex_aim:charge_gravity:"): labels.append("镜冲引力：紫色路径和绿色爆心都危险！")
             elif event.startswith("apex_aim:"): labels.append("裁决法则锁定：按地面预警走位！")
             elif event.startswith("apex_cage:"): labels.append("牢笼成形：击碎白色闸门后离开！")
             elif event == "apex_gate_break": labels.append("闸门击碎：火流即将反向回灌！")

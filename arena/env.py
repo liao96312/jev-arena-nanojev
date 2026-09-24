@@ -1421,6 +1421,14 @@ class ArenaEnv:
         events.append(f"null_fracture:{len(self.null_void)}")
         return reward
 
+    def _apex_charge_path(self, boss: ApexArbiter, target: tuple[int, int]) -> tuple[tuple[int, int], ...]:
+        path = []
+        for cell in ray_cells(boss.position, target):
+            if cell in self.walls | self.pits:
+                break
+            path.append(cell)
+        return tuple(path)
+
     def _resolve_apex(self, boss: ApexArbiter, events: list[str]) -> float:
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
@@ -1429,26 +1437,34 @@ class ArenaEnv:
             return 0.0
         if not boss.countdown:
             boss.kind = (("cage", "barrage", "charge", "gravity")[boss.seals]
-                         if boss.seals < 4 else ("barrage", "charge", "verdict")[boss.finale_cycles % 3])
+                         if boss.seals < 4 else ("cage_barrage", "charge_gravity", "verdict")[boss.finale_cycles % 3])
             boss.target = self.player.position
             boss.gate_broken = False
             boss.appeal = None
-            if boss.kind == "cage":
+            if boss.kind in ("cage", "cage_barrage"):
                 directions = ("n", "e", "w", "s")
                 boss.gate = next((self.add(boss.target, d) for d in directions
                                   if self.in_bounds(self.add(boss.target, d)) and
                                   self.add(boss.target, d) not in self.walls | self.pits | self.barrels and
                                   not self.boss_at(self.add(boss.target, d))), None)
                 boss.danger = {boss.target}
+                if boss.kind == "cage_barrage" and boss.gate:
+                    safe_column = boss.gate[0] % 3
+                    boss.danger |= {(x, y) for y in range(5, 18) for x in range(2, 18)
+                                    if x % 3 != safe_column and (x, y) not in self.walls | self.pits}
                 boss.countdown = 2
             elif boss.kind == "barrage":
                 safe_column = 0 if boss.seals < 4 else (boss.finale_cycles // 2 + 1) % 3
                 boss.danger = {(x, y) for y in range(5, 18) for x in range(2, 18)
                                if x % 3 != safe_column and (x, y) not in self.walls | self.pits}
                 boss.countdown = 1
-            elif boss.kind == "charge":
-                boss.danger = set(ray_cells(boss.position, boss.target)) - self.walls
-                boss.countdown = 1
+            elif boss.kind in ("charge", "charge_gravity"):
+                boss.danger = set(self._apex_charge_path(boss, boss.target))
+                if boss.kind == "charge_gravity":
+                    x, y = boss.target
+                    boss.danger |= {(x + dx, y + dy) for dx in range(-1, 2) for dy in range(-1, 2)
+                                    if abs(dx) + abs(dy) <= 1}
+                boss.countdown = 2 if boss.kind == "charge_gravity" else 1
             elif boss.kind == "verdict":
                 boss.appeal = next((self.add(boss.target, direction) for direction in ("n", "e", "w", "s")
                                     if self.in_bounds(self.add(boss.target, direction)) and
@@ -1468,20 +1484,22 @@ class ArenaEnv:
             return 0.0
         if boss.countdown == 2:
             boss.countdown = 1
-            if boss.kind == "cage" and boss.target and boss.gate:
+            if boss.kind in ("cage", "cage_barrage") and boss.target and boss.gate:
                 x, y = boss.target
                 self.apex_cage = {(x + dx, y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)
                                   if (dx or dy) and self.in_bounds((x + dx, y + dy)) and
-                                  (x + dx, y + dy) not in self.walls | self.pits | self.barrels}
+                                  (x + dx, y + dy) not in self.walls | self.pits | self.barrels and
+                                  not self.boss_at((x + dx, y + dy))}
                 # A doorway always remains breakable even when the ring touches existing terrain.
                 events.append(f"apex_cage:{boss.gate[0]}:{boss.gate[1]}")
-            elif boss.kind == "gravity" and boss.target and self.player.position not in self.apex_seals:
+            elif boss.kind in ("gravity", "charge_gravity") and boss.target and self.player.position not in self.apex_seals:
                 dx = (boss.target[0] > self.player.position[0]) - (boss.target[0] < self.player.position[0])
                 dy = (boss.target[1] > self.player.position[1]) - (boss.target[1] < self.player.position[1])
                 direction = (dx, 0) if dx else (0, dy)
                 pulled = (self.player.position[0] + direction[0], self.player.position[1] + direction[1])
                 if (direction != (0, 0) and self.in_bounds(pulled) and
-                        pulled not in self.walls | self.pits | self.apex_cage):
+                        pulled not in self.walls | self.pits | self.barrels | self.apex_cage and
+                        not self.boss_at(pulled)):
                     self.player.position = pulled
                     events.append(f"apex_pull:{pulled[0]}:{pulled[1]}")
             events.append(f"apex_charge:{boss.kind}:1")
@@ -1513,12 +1531,32 @@ class ArenaEnv:
             if boss.seals == 3 and boss.target == self.apex_seals[3] and self.player.position == boss.target:
                 boss.seals += 1
                 events.append("apex_seal:4")
+        elif boss.kind == "cage_barrage":
+            safe_column = boss.gate[0] % 3 if boss.gate else boss.target[0] % 3
+            cage_hit = not boss.gate_broken and self.player.position == boss.target
+            barrage_hit = (self.player.position[0] % 3 != safe_column and
+                           5 <= self.player.position[1] < 18)
+            if cage_hit or barrage_hit:
+                reward += self._damage_entity(self.player, min(36, 26 * cage_hit + 16 * barrage_hit),
+                                              events, "apex_cage_barrage")
+            self.apex_cage.clear()
+        elif boss.kind == "charge_gravity":
+            path = set(self._apex_charge_path(boss, boss.target))
+            charge_hit = self.player.position in path
+            gravity_hit = self._distance(self.player.position, boss.target) <= 1
+            if charge_hit or gravity_hit:
+                reward += self._damage_entity(self.player, min(36, 32 * charge_hit + 24 * gravity_hit),
+                                              events, "apex_charge_gravity")
         else:
             if boss.appeal and self.player.position == boss.appeal:
                 events.append("apex_appeal")
             elif self.player.position in boss.danger:
                 reward += self._damage_entity(self.player, 36, events, "apex_verdict")
-        events.append(f"apex_fire:{boss.kind}:{boss.target[0]}:{boss.target[1]}")
+        safe_column = (boss.gate[0] % 3 if boss.gate else boss.target[0] % 3)
+        charge_path = (self._apex_charge_path(boss, boss.target)
+                       if boss.kind in ("charge", "charge_gravity") else ())
+        endpoint = charge_path[-1] if charge_path else (boss.position if boss.kind in ("charge", "charge_gravity") else boss.target)
+        events.append(f"apex_fire:{boss.kind}:{boss.target[0]}:{boss.target[1]}:{safe_column}:{endpoint[0]}:{endpoint[1]}")
         boss.countdown = 0
         boss.danger.clear()
         boss.target = boss.gate = boss.appeal = None
@@ -1832,8 +1870,11 @@ class ArenaEnv:
         if isinstance(self.boss, ApexArbiter) and self.boss.countdown == 1:
             if position in self.boss.danger:
                 power = {"cage": 26, "barrage": 16, "charge": 32, "gravity": 24,
-                         "verdict": 36}[self.boss.kind]
+                         "cage_barrage": 36, "charge_gravity": 36, "verdict": 36}[self.boss.kind]
                 if not (self.boss.kind == "cage" and self.boss.gate_broken or
+                        self.boss.kind == "cage_barrage" and self.boss.gate_broken and
+                        self.boss.gate is not None and
+                        position[0] % 3 == self.boss.gate[0] % 3 or
                         self.boss.kind == "charge" and self.apex_seals[2] in self.boss.danger or
                         self.boss.kind == "gravity" and position == self.apex_seals[3]):
                     threats.append((f"apex_arbiter/{self.boss.kind}", power))
