@@ -119,7 +119,8 @@ def encode_state(env: ArenaEnv) -> str:
                 f"nodes={env.boss.node_index}/4 order={env.null_nodes} "
                 f"exposed={env.boss.exposed_rounds} blocked={env.boss.blocked_kind or '-'} "
                 f"erase={sorted(env.boss.erase_targets)} countdown={env.boss.erase_countdown} "
-                f"void={sorted(env.null_void)} fracture={env.boss.fracture_damage}.")
+                f"warp={env.boss.warp_target or '-'} void={sorted(env.null_void)} "
+                f"fracture={env.boss.fracture_damage}.")
     elif isinstance(env.boss, ApexArbiter):
         boss = (f" Boss apex@{env.boss.position} hp={env.boss.hp} "
                 f"seals={env.boss.seals}/4 pads={env.apex_seals} "

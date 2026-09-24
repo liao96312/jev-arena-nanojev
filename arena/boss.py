@@ -130,6 +130,7 @@ class NullWeaver:
     erase_countdown: int = 0
     cycles: int = 0
     fracture_damage: int = 20
+    warp_target: tuple[int, int] | None = None
 
 
 @dataclass

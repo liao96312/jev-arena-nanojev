@@ -718,6 +718,7 @@ class ArenaEnv:
                     self.boss.blocked_kind = None
                     self.boss.erase_targets.clear()
                     self.boss.erase_countdown = 0
+                    self.boss.warp_target = None
                     self.null_void.clear()
                     events.append("boss_shield_break")
                     events.append("null_reverse_write")
@@ -1272,6 +1273,13 @@ class ArenaEnv:
             boss.copied_action = action
             direction = action[-1] if action[-1] in "nsew" else None
             boss.mirrored_direction = {"e": "w", "w": "e"}.get(direction, direction)
+            # Sidestep to line up the mirrored shot; never shift a locked warning.
+            desired_x = 11 if boss.mirrored_direction == "w" else 9 if boss.mirrored_direction == "e" else 10
+            destination = (boss.position[0] + (desired_x > boss.position[0]) - (desired_x < boss.position[0]), 6)
+            if destination != boss.position and destination != self.player.position:
+                previous = boss.position
+                boss.position = destination
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{destination[0]}:{destination[1]}")
             path = self.mirror_ray()
             boss.target = path[-1] if path else None
             events.append(f"mirror_aim:{action}:{boss.mirrored_direction or '-'}")
@@ -1339,6 +1347,13 @@ class ArenaEnv:
                 events.append("boss_shield_restored")
             return 0.0
         if boss.rail_target is None:
+            # Heavy lateral repositioning only between rail volleys.
+            desired_x = min(12, max(8, self.player.position[0]))
+            destination = (boss.position[0] + (desired_x > boss.position[0]) - (desired_x < boss.position[0]), 5)
+            if destination != boss.position and destination != self.player.position:
+                previous = boss.position
+                boss.position = destination
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{destination[0]}:{destination[1]}")
             boss.rail_axis = "h" if boss.shots % 4 == 3 else "v"
             boss.rail_target = self.player.position[1 if boss.rail_axis == "h" else 0]
             boss.charge = 2
@@ -1389,6 +1404,19 @@ class ArenaEnv:
                 boss.node_index = 0
                 events.append("boss_shield_restored")
             return 0.0
+        if boss.warp_target:
+            destination = boss.warp_target
+            boss.warp_target = None
+            if destination != self.player.position:
+                previous = boss.position
+                boss.position = destination
+                events.extend((f"boss_move:{previous[0]}:{previous[1]}:{destination[0]}:{destination[1]}",
+                               "null_warp"))
+        elif boss.cycles % 3 == 0:
+            anchors = ((8, 5), (12, 5), (8, 7), (12, 7))
+            choices = (cell for cell in anchors if cell != boss.position and cell != self.player.position)
+            boss.warp_target = min(choices, key=lambda cell: (self._distance(cell, self.player.position), cell))
+            events.append(f"null_warp_aim:{boss.warp_target[0]}:{boss.warp_target[1]}")
         boss.blocked_kind = ("move", "melee", "ranged", "skill")[boss.cycles % 4]
         boss.cycles += 1
         events.append(f"null_block:{boss.blocked_kind}")
@@ -1429,6 +1457,25 @@ class ArenaEnv:
             path.append(cell)
         return tuple(path)
 
+    def _apex_reposition(self, boss: ApexArbiter, events: list[str]) -> None:
+        # Each phase has a different objective: flank, recenter for reflection,
+        # then pursue. This happens before the danger cells are locked.
+        if boss.seals < 3:
+            desired = ((9, 5), (11, 5), (10, 5))[boss.seals]
+        else:
+            x, y = self.player.position
+            desired = (min(12, max(8, x)), min(10, max(5, y - 2)))
+        x, y = boss.position
+        dx = (desired[0] > x) - (desired[0] < x)
+        dy = (desired[1] > y) - (desired[1] < y)
+        candidates = ((x + dx, y), (x, y + dy)) if boss.seals < 3 else ((x, y + dy), (x + dx, y))
+        for destination in candidates:
+            if (destination != boss.position and destination != self.player.position and
+                    self.in_bounds(destination) and destination not in self.walls | self.pits | self.apex_cage):
+                boss.position = destination
+                events.append(f"boss_move:{x}:{y}:{destination[0]}:{destination[1]}")
+                break
+
     def _resolve_apex(self, boss: ApexArbiter, events: list[str]) -> float:
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
@@ -1436,6 +1483,7 @@ class ArenaEnv:
                 events.append("boss_shield_restored")
             return 0.0
         if not boss.countdown:
+            self._apex_reposition(boss, events)
             boss.kind = (("cage", "barrage", "charge", "gravity")[boss.seals]
                          if boss.seals < 4 else ("cage_barrage", "charge_gravity", "verdict")[boss.finale_cycles % 3])
             boss.target = self.player.position
@@ -1557,6 +1605,22 @@ class ArenaEnv:
                        if boss.kind in ("charge", "charge_gravity") else ())
         endpoint = charge_path[-1] if charge_path else (boss.position if boss.kind in ("charge", "charge_gravity") else boss.target)
         events.append(f"apex_fire:{boss.kind}:{boss.target[0]}:{boss.target[1]}:{safe_column}:{endpoint[0]}:{endpoint[1]}")
+        if charge_path:
+            # Rush along the warned trace, stopping short of the player or a
+            # reflecting seal. The new position persists after the animation.
+            reflecting = "apex_seal:3" in events
+            stop = next((index for index, cell in enumerate(charge_path)
+                         if cell == self.player.position or
+                         (reflecting and cell == self.apex_seals[2])), len(charge_path))
+            # Early law keeps the reflector lane readable; the finale unleashes
+            # a longer rush. A reflected charge may reach the pylon doorstep.
+            rush_limit = 5 if boss.seals >= 4 or reflecting else 2
+            traversed = charge_path[:min(stop, rush_limit)]
+            if traversed:
+                destination = traversed[-1]
+                previous = boss.position
+                boss.position = destination
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{destination[0]}:{destination[1]}")
         boss.countdown = 0
         boss.danger.clear()
         boss.target = boss.gate = boss.appeal = None
@@ -1958,7 +2022,7 @@ class ArenaEnv:
                      ("null", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.node_index, self.boss.blocked_kind,
                       tuple(sorted(self.boss.erase_targets)), self.boss.erase_countdown,
-                      self.boss.cycles) if isinstance(self.boss, NullWeaver) else
+                      self.boss.cycles, self.boss.warp_target) if isinstance(self.boss, NullWeaver) else
                      ("apex", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.seals, self.boss.kind, self.boss.target, self.boss.countdown,
                       tuple(sorted(self.boss.danger)), self.boss.gate, self.boss.gate_broken,

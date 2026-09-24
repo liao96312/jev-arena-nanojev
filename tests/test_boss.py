@@ -558,12 +558,26 @@ class MirrorBossTests(unittest.TestCase):
         env.step("wait")
         result = env.step("move_e")
         self.assertIn("mirror_aim:move_e:w", result.events)
-        self.assertEqual(env.mirror_ray(), ((9, 6), (8, 6), (7, 6), (6, 6)))
+        self.assertIn("boss_move:10:6:11:6", result.events)
+        self.assertEqual(env.mirror_ray(), ((10, 6), (9, 6), (8, 6), (7, 6), (6, 6)))
         self.assertNotIn(("mirror_seraph/shard", 18), env.imminent_threats((8, 6)))
         env.step("wait")
         result = env.step("wait")
         self.assertIn("mirror_lock_break:1", result.events)
         self.assertEqual(env.boss.broken_locks, {(6, 6)})
+
+    def test_sidestep_does_not_shift_locked_mirror_ray(self):
+        env = ArenaEnv(campaign_config(70))
+        env.last_non_wait_action = "move_w"
+        events = []
+        env._resolve_mirror(env.boss, events)
+        self.assertIn("boss_move:10:6:9:6", events)
+        warned = env.mirror_ray()
+        events.clear()
+        env._resolve_mirror(env.boss, events)
+        self.assertEqual(env.boss.position, (9, 6))
+        self.assertEqual(warned[-1], (14, 6))
+        self.assertFalse(any(event.startswith("boss_move:") for event in events))
 
     def test_used_lock_allows_danger_and_emp_echo_is_local(self):
         env = ArenaEnv(campaign_config(70))
@@ -612,6 +626,19 @@ class MirrorBossTests(unittest.TestCase):
 
 
 class SiegeBossTests(unittest.TestCase):
+    def test_heavy_reposition_only_before_rail_lock(self):
+        env = ArenaEnv(campaign_config(80))
+        env.player.position = (7, 12)
+        events = []
+        env._resolve_siege(env.boss, events)
+        self.assertIn("boss_move:10:5:9:5", events)
+        self.assertEqual(env.boss.rail_target, 7)
+        for _ in range(2):
+            events.clear()
+            env._resolve_siege(env.boss, events)
+            self.assertEqual(env.boss.position, (9, 5))
+            self.assertFalse(any(event.startswith("boss_move:") for event in events))
+
     def test_boss_rooms_and_supplies_are_distinct(self):
         rooms, supplies = [], []
         for level in range(10, 101, 10):
@@ -686,6 +713,31 @@ class SiegeBossTests(unittest.TestCase):
 
 
 class NullBossTests(unittest.TestCase):
+    def test_warp_warns_destination_and_changes_real_position(self):
+        env = ArenaEnv(campaign_config(90))
+        env.player.position = (10, 15)
+        events = []
+        env._resolve_null(env.boss, events)
+        destination = env.boss.warp_target
+        self.assertIn(f"null_warp_aim:{destination[0]}:{destination[1]}", events)
+        self.assertEqual(env.boss.position, (10, 5))
+        self.assertIn(f"warp={destination}", encode_state(env))
+        events.clear()
+        env._resolve_null(env.boss, events)
+        self.assertEqual(env.boss.position, destination)
+        self.assertIn("null_warp", events)
+        self.assertNotIn(destination, env.walls | env.pits)
+
+    def test_warp_cancels_when_player_occupies_warned_cell(self):
+        env = ArenaEnv(campaign_config(90))
+        env._resolve_null(env.boss, [])
+        env.player.position = env.boss.warp_target
+        events = []
+        env._resolve_null(env.boss, events)
+        self.assertEqual(env.boss.position, (10, 5))
+        self.assertNotIn("null_warp", events)
+        self.assertIsNone(env.boss.warp_target)
+
     def test_numbered_nodes_wrong_order_and_reverse_write(self):
         env = ArenaEnv(campaign_config(90))
         self.assertEqual(len(env.null_nodes), 4)
@@ -741,6 +793,39 @@ class NullBossTests(unittest.TestCase):
 
 
 class ApexBossTests(unittest.TestCase):
+    def test_flank_and_real_charge_keep_warning_locked(self):
+        env = ArenaEnv(campaign_config(100))
+        events = []
+        env._resolve_apex(env.boss, events)
+        self.assertIn("boss_move:10:5:9:5", events)
+        warned = set(env.boss.danger)
+        events.clear()
+        env._resolve_apex(env.boss, events)
+        env._resolve_apex(env.boss, events)
+        self.assertEqual(env.boss.position, (9, 5))
+        self.assertTrue(warned)
+        env = ArenaEnv(campaign_config(100))
+        env.boss.seals = 2
+        env.player.position = (10, 13)
+        events = []
+        env._resolve_apex(env.boss, events)
+        self.assertIn((10, 11), env.boss.danger)
+        env._resolve_apex(env.boss, events)
+        self.assertEqual(env.boss.position, (10, 10))
+        self.assertIn("boss_move:10:5:10:10", events)
+
+    def test_finale_charge_rushes_farther_than_reflection_phase(self):
+        env = ArenaEnv(campaign_config(100))
+        env.boss.seals = 4
+        env.boss.finale_cycles = 1
+        env.player.position = (10, 13)
+        events = []
+        for _ in range(3):
+            env._resolve_apex(env.boss, events)
+        self.assertTrue(any(event.startswith("apex_fire:charge_gravity:10:13:") for event in events))
+        self.assertEqual(env.boss.position, (10, 11))
+        self.assertNotEqual(env.boss.position, env.player.position)
+
     def test_cage_warning_break_and_fire(self):
         env = ArenaEnv(campaign_config(100))
         env.round = 3

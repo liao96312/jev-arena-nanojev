@@ -256,13 +256,11 @@ class ArenaRenderer:
             siege = isinstance(env.boss, SiegeLeviathan)
             null = isinstance(env.boss, NullWeaver)
             apex = isinstance(env.boss, ApexArbiter)
-            if apex:
-                rush = next((event.split(":") for event in events
-                             if event.startswith(("apex_fire:charge:", "apex_fire:charge_gravity:"))), None)
-                if rush:
-                    travel = 2 * progress if progress <= .5 else 2 * (1 - progress)
-                    boss_position = (env.boss.position[0] + (int(rush[5]) - env.boss.position[0]) * travel,
-                                     env.boss.position[1] + (int(rush[6]) - env.boss.position[1]) * travel)
+            if null and move and "null_warp" in events:
+                boss_position = (int(move[1]), int(move[2])) if progress < .5 else env.boss.position
+                for cell in ((int(move[1]), int(move[2])), env.boss.position):
+                    center = (round((cell[0] + .5) * self.CELL), round((cell[1] + .5) * self.CELL))
+                    self.pg.draw.circle(self.screen, (106, 237, 255), center, 18, 3)
             self._sprite(boss_position, "boss_apex_arbiter" if apex else
                          "boss_null_weaver" if null else
                          "boss_siege_leviathan" if siege else
@@ -840,7 +838,7 @@ class ArenaRenderer:
             self.screen.blit(overlay, (0, 0))
             return
         if isinstance(env.boss, NullWeaver):
-            if not env.boss.erase_targets or not env.boss.erase_countdown:
+            if not env.boss.erase_targets and not env.boss.warp_target:
                 return
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
             urgent = env.boss.erase_countdown == 1
@@ -851,6 +849,11 @@ class ArenaRenderer:
                                   rect, border_radius=5)
                 self.pg.draw.rect(overlay, (255, 212, 230, 230) if urgent else (205, 231, 255, 190),
                                   rect, 2, border_radius=5)
+            if env.boss.warp_target:
+                x, y = env.boss.warp_target
+                center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
+                self.pg.draw.circle(overlay, (91, 236, 255, 215), center, self.CELL // 2 - 3, 3)
+                self.pg.draw.circle(overlay, (211, 255, 255, 240), center, 8, 2)
             self.screen.blit(overlay, (0, 0))
             return
         if isinstance(env.boss, SiegeLeviathan):
@@ -1174,6 +1177,8 @@ class ArenaRenderer:
             elif event == "null_displace": labels.append("被断裂地板弹开！")
             elif event == "null_reverse_write": labels.append("逆向写入完成：核心开放！")
             elif event.startswith("null_block:"): labels.append("Boss 封锁了一类动作，查看右侧提示！")
+            elif event.startswith("null_warp_aim:"): labels.append("虚空跃迁预警：蓝色圆环是落点！")
+            elif event == "null_warp": labels.append("虚空织者跃迁！")
             elif event.startswith("apex_aim:verdict:"): labels.append("终审判词：踩白色上诉位反弹伤害！")
             elif event.startswith("apex_aim:cage_barrage:"): labels.append("熔锁雷幕：破白门，躲蓝色弹幕！")
             elif event.startswith("apex_aim:charge_gravity:"): labels.append("镜冲引力：紫色路径和绿色爆心都危险！")
