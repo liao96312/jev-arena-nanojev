@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-from arena.boss import ChronoMantis, FurnaceHydra, PrismWarden, StormChoir
+from arena.boss import ChronoMantis, FurnaceHydra, PrismWarden, StormChoir, VoidAngler
 
 
 def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
@@ -109,7 +109,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
-    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis)):
+    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler)):
         boss = env.boss
         if boss.exposed_rounds:
             shots = {action for action in safest if action.startswith("shoot_")}
@@ -139,6 +139,15 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
                            len(env.storm_chain()) == 6)
             if env.player.position in targets and "wait" in safest and (chain_ready or
                     (boss.target is None and boss.attacks % 2 == 0)):
+                return "wait", "boss_tactics"
+        elif isinstance(boss, VoidAngler):
+            targets = env.gravity_nodes - boss.drained_nodes
+            if boss.attack_kind == "mine" and boss.target in targets:
+                targets = {boss.target}
+            if (boss.attack_kind == "mine" and boss.target == env.player.position and
+                    env.player.position in targets and "wait" in safest):
+                return "wait", "boss_tactics"
+            if boss.target is None and boss.attacks % 2 == 0 and env.player.position in targets and "wait" in safest:
                 return "wait", "boss_tactics"
         else:
             landing_x = env.chrono_landing_x()

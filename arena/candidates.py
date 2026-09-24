@@ -1,6 +1,6 @@
 from .entities import Action
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, PrismWarden, StormChoir
+from .boss import ChronoMantis, FurnaceHydra, PrismWarden, StormChoir, VoidAngler
 
 
 def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
@@ -30,6 +30,8 @@ def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
             parts.append(f"valves {len(env.boss.valves_opened)}->{len(simulation.boss.valves_opened)}")
         if isinstance(env.boss, StormChoir) and simulation.boss.exposed_rounds and not env.boss.exposed_rounds:
             parts.append("lightning grounded")
+        if isinstance(env.boss, VoidAngler) and simulation.boss.drained_nodes != env.boss.drained_nodes:
+            parts.append(f"armor {len(env.boss.drained_nodes)}->{len(simulation.boss.drained_nodes)}")
         if simulation.boss.exposed_rounds and not env.boss.exposed_rounds:
             parts.append("core exposed")
         if simulation.boss.hp != env.boss.hp:
@@ -142,11 +144,12 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
                 kind = ("prism_warden" if isinstance(enemy, PrismWarden) else
                         "furnace_hydra" if isinstance(enemy, FurnaceHydra) else
                         "storm_choir" if isinstance(enemy, StormChoir) else
-                        "chrono_mantis" if isinstance(enemy, ChronoMantis) else enemy.enemy_type.value)
-                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis))
+                        "chrono_mantis" if isinstance(enemy, ChronoMantis) else
+                        "void_angler" if isinstance(enemy, VoidAngler) else enemy.enemy_type.value)
+                remaining = (max(0, enemy.hp - damage) if not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler))
                              or enemy.exposed_rounds else enemy.hp)
                 description += f"; {kind}/{distance} hp {enemy.hp}->{remaining}"
-                if weapon == "bow" and not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis)) and enemy.hp > damage:
+                if weapon == "bow" and not isinstance(enemy, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler)) and enemy.hp > damage:
                     description += "; push=1"
         consequence = _immediate_consequence(env, action)
         candidates[action.value] = description + ("; immediate: " + consequence if consequence else "")

@@ -358,6 +358,7 @@ class ChronoBossTests(unittest.TestCase):
         self.assertEqual(env.boss.position, (9, 7))
         self.assertEqual(env.player.hp, 100)
 
+
     def test_occupied_leap_landing_is_cancelled_not_retargeted(self):
         env = ArenaEnv(campaign_config(40))
         env.round = 3
@@ -443,6 +444,60 @@ class ChronoBossTests(unittest.TestCase):
             env.step(agent.act(env))
         self.assertTrue(env.done)
         self.assertEqual(env.player.hp, 100)
+
+
+class VoidBossTests(unittest.TestCase):
+    def test_room_and_gravity_counter(self):
+        env = ArenaEnv(campaign_config(50))
+        self.assertIsNotNone(env.boss)
+        self.assertFalse(env.gems)
+        self.assertEqual(env.gravity_nodes, {(7, 11), (10, 12), (13, 11)})
+        self.assertTrue((env.gravity_nodes | env.medkits | env.energy_cells) <= env._reachable_cells())
+        self.assertIn("Boss void", encode_state(env))
+        env.round = 3
+        env.player.position = (10, 12)
+        env.boss.target = env.player.position
+        env.boss.attack_kind = "mine"
+        env.step(Action.WAIT)
+        pulse = env.step(Action.WAIT)
+        self.assertIn("void_drain:1", pulse.events)
+        self.assertEqual(env.player.hp, 100)
+        self.assertEqual(env.boss.drained_nodes, {(10, 12)})
+
+    def test_beam_warning_and_pull_never_enters_pit(self):
+        env = ArenaEnv(campaign_config(50))
+        env.round = 3
+        env.boss.attack_kind = "beam"
+        env.boss.target = env.player.position
+        self.assertIn(("void_angler/beam", 22), env.imminent_threats())
+        env.step(Action.WAIT)
+        beam = env.step(Action.WAIT)
+        self.assertIn("damage:void_beam:22", beam.events)
+
+        env = ArenaEnv(campaign_config(50))
+        env.round = 3
+        env.player.position = (4, 10)
+        env.boss.attack_kind = "mine"
+        env.boss.target = (3, 10)
+        env.step(Action.WAIT)
+        pulse = env.step(Action.WAIT)
+        self.assertNotIn("void_pull:4:10:3:10", pulse.events)
+        self.assertNotIn(env.player.position, env.pits)
+
+    def test_default_hybrid_and_rule_finish_without_damage(self):
+        for rule in (False, True):
+            env, agent = ArenaEnv(campaign_config(50)), RuleAgent()
+            events = []
+            for _ in range(120):
+                if env.done:
+                    break
+                action = (agent.act(env) if rule else
+                          select_action({action.value: 1.0 for action in env.legal_actions()}, env, "hybrid")[0])
+                events.extend(env.step(action).events)
+            self.assertTrue(env.done)
+            self.assertEqual(env.player.hp, 100)
+            self.assertEqual(events.count("boss_shield_break"), 2)
+            self.assertIn("boss_defeated", events)
 
 
 if __name__ == "__main__":

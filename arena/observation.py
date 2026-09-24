@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, StormChoir
+from .boss import ChronoMantis, FurnaceHydra, StormChoir, VoidAngler
 
 
 ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
@@ -92,6 +92,10 @@ def encode_state(env: ArenaEnv) -> str:
                 f"phase={env.boss.phase} slash={env.boss.slash_target or '-'} "
                 f"leap={env.boss.leap_target or '-'} anchor={sorted(env.time_anchors)} "
                 f"dmg=slash{env.boss.slash_damage}/echo{env.boss.echo_damage}.")
+    elif isinstance(env.boss, VoidAngler):
+        boss = (f" Boss void@{env.boss.position} hp={env.boss.hp} armor={len(env.boss.drained_nodes)}/3 "
+                f"exposed={env.boss.exposed_rounds} {env.boss.attack_kind} aim={env.boss.target or '-'} "
+                f"nodes={sorted(env.gravity_nodes - env.boss.drained_nodes)} beam{env.boss.beam_damage}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "

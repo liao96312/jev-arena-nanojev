@@ -61,6 +61,19 @@ class ChronoMantis:
     slash_damage: int = 24
     echo_damage: int = 18
 
+
+@dataclass
+class VoidAngler:
+    position: tuple[int, int] = (10, 6)
+    hp: int = 108
+    max_hp: int = 108
+    exposed_rounds: int = 0
+    drained_nodes: set[tuple[int, int]] = field(default_factory=set)
+    target: tuple[int, int] | None = None
+    attack_kind: str = "mine"
+    attacks: int = 0
+    beam_damage: int = 22
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start
