@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, SiegeLeviathan, StormChoir, VoidAngler
+from .boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, SiegeLeviathan, StormChoir, VoidAngler
 
 
 ENEMY_CODES = {"chaser": "C", "charger": "G", "archer": "A", "bomber": "B"}
@@ -120,6 +120,13 @@ def encode_state(env: ArenaEnv) -> str:
                 f"exposed={env.boss.exposed_rounds} blocked={env.boss.blocked_kind or '-'} "
                 f"erase={sorted(env.boss.erase_targets)} countdown={env.boss.erase_countdown} "
                 f"void={sorted(env.null_void)} fracture={env.boss.fracture_damage}.")
+    elif isinstance(env.boss, ApexArbiter):
+        boss = (f" Boss apex@{env.boss.position} hp={env.boss.hp} "
+                f"seals={env.boss.seals}/4 pads={env.apex_seals} "
+                f"exposed={env.boss.exposed_rounds} law={env.boss.kind} "
+                f"target={env.boss.target or '-'} countdown={env.boss.countdown} "
+                f"danger={sorted(env.boss.danger)} cage={sorted(env.apex_cage)} "
+                f"gate={env.boss.gate or '-'} finale={env.boss.finale_cycles}.")
     elif env.boss:
         target = env.boss.target
         boss = (f" Boss prism@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "

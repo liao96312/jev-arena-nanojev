@@ -1,7 +1,7 @@
 import math
 from collections import deque
 
-from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
+from arena.boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
 
 
 def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> set[str]:
@@ -10,7 +10,7 @@ def _gem_route_actions(env, probabilities: dict[str, float], targets=None) -> se
         if action.startswith(("move_", "dash_")):
             target = env.add(env.player.position, action[-1])
             moves[action] = env.add(target, action[-1]) if action.startswith("dash_") else target
-    blocked = (set(env.walls) | set(env.pits) | set(env.barrels) | set(env.null_void) |
+    blocked = (set(env.walls) | set(env.pits) | set(env.barrels) | set(env.null_void) | set(env.apex_cage) |
                set(env.rail_covers.values()) | {enemy.position for enemy in env.enemies})
     if isinstance(env.boss, NullWeaver) and not env.boss.exposed_rounds and targets is not None:
         blocked |= set(env.null_nodes) - set(targets)
@@ -122,7 +122,7 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
         return value
 
     chosen = max(sorted(safest), key=score)
-    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan, NullWeaver)):
+    if mode == "hybrid" and isinstance(env.boss, (PrismWarden, FurnaceHydra, StormChoir, ChronoMantis, VoidAngler, IronGardener, MirrorSeraph, SiegeLeviathan, NullWeaver, ApexArbiter)):
         boss = env.boss
         if boss.exposed_rounds:
             shots = {action for action in safest if action.startswith("shoot_")}
@@ -131,9 +131,39 @@ def select_action(probabilities: dict[str, float], env, mode: str = "hybrid") ->
             strikes = {action for action in safest if action.startswith("attack_")}
             if strikes:
                 return max(sorted(strikes), key=probabilities.__getitem__), "boss_tactics"
-            targets = ({(boss.position[0], y) for y in range(7, 14)} if isinstance(boss, (SiegeLeviathan, NullWeaver)) else
+            targets = ({(boss.position[0], y) for y in range(7, 14)} if isinstance(boss, (SiegeLeviathan, NullWeaver, ApexArbiter)) else
                        {(boss.position[0], y) for y in range(7, 15)} if isinstance(boss, MirrorSeraph)
                        else {(boss.position[0], y) for y in range(6, 17)}) - env.walls
+        elif isinstance(boss, ApexArbiter):
+            if boss.seals == 0 and boss.countdown:
+                if boss.gate in env.apex_cage:
+                    direction = next((direction for direction in ("n", "s", "w", "e")
+                                      if env.add(env.player.position, direction) == boss.gate), None)
+                    attack = f"attack_{direction}"
+                    if direction and attack in safest:
+                        return attack, "boss_tactics"
+                if boss.gate_broken and boss.gate:
+                    targets = {boss.gate}
+                elif boss.countdown == 2 and env.player.position == boss.target and "wait" in safest:
+                    return "wait", "boss_tactics"
+                else:
+                    targets = {boss.target or env.player.position}
+            elif boss.seals == 0:
+                targets = {(10, 15)}
+            elif boss.seals == 1:
+                targets = {env.apex_seals[1]}
+                if env.player.position in targets and "wait" in safest:
+                    return "wait", "boss_tactics"
+            elif boss.seals == 2:
+                targets = {(10, 13)}
+                if env.player.position in targets and not boss.countdown and "wait" in safest:
+                    return "wait", "boss_tactics"
+            elif boss.seals == 3:
+                targets = {env.apex_seals[3]}
+                if env.player.position in targets and "wait" in safest:
+                    return "wait", "boss_tactics"
+            else:
+                targets = {(10, 12)}
         elif isinstance(boss, NullWeaver):
             targets = {env.null_nodes[boss.node_index]}
         elif isinstance(boss, SiegeLeviathan):

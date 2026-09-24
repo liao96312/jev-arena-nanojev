@@ -131,6 +131,22 @@ class NullWeaver:
     cycles: int = 0
     fracture_damage: int = 20
 
+
+@dataclass
+class ApexArbiter:
+    position: tuple[int, int] = (10, 5)
+    hp: int = 216
+    max_hp: int = 216
+    exposed_rounds: int = 0
+    seals: int = 0
+    kind: str = "cage"
+    countdown: int = 0
+    target: tuple[int, int] | None = None
+    danger: set[tuple[int, int]] = field(default_factory=set)
+    gate: tuple[int, int] | None = None
+    gate_broken: bool = False
+    finale_cycles: int = 0
+
 def ray_cells(start: tuple[int, int], end: tuple[int, int]) -> tuple[tuple[int, int], ...]:
     """The same grid trace is used for the warning and the actual shot."""
     x, y = start

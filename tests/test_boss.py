@@ -614,7 +614,7 @@ class MirrorBossTests(unittest.TestCase):
 class SiegeBossTests(unittest.TestCase):
     def test_boss_rooms_and_supplies_are_distinct(self):
         rooms, supplies = [], []
-        for level in range(10, 91, 10):
+        for level in range(10, 101, 10):
             env = ArenaEnv(campaign_config(level))
             rooms.append(frozenset(env.walls))
             supplies.append((len(env.medkits), len(env.energy_cells),
@@ -623,8 +623,8 @@ class SiegeBossTests(unittest.TestCase):
             items = (env.medkits | env.energy_cells | env.arrow_bundles |
                      env.bow_pickups | env.pistol_pickups)
             self.assertTrue(items <= env._reachable_cells(), level)
-        self.assertEqual(len(set(rooms)), 9)
-        self.assertEqual(len(set(supplies)), 9)
+        self.assertEqual(len(set(rooms)), 10)
+        self.assertEqual(len(set(supplies)), 10)
 
     def test_two_round_rail_warning_cover_and_rebuild(self):
         env = ArenaEnv(campaign_config(80))
@@ -738,6 +738,93 @@ class NullBossTests(unittest.TestCase):
             self.assertEqual(env.player.hp, 100)
             self.assertEqual(events.count("boss_shield_break"), 2)
             self.assertIn("boss_defeated", events)
+
+
+class ApexBossTests(unittest.TestCase):
+    def test_cage_warning_break_and_fire(self):
+        env = ArenaEnv(campaign_config(100))
+        env.round = 3
+        env.player.position = (10, 15)
+        env.step("wait")
+        aim = env.step("wait")
+        self.assertIn("apex_aim:cage:2", aim.events)
+        self.assertFalse(env.apex_cage)
+        env.step("wait")
+        formed = env.step("wait")
+        self.assertTrue(env.apex_cage)
+        self.assertIn("apex_cage:10:14", formed.events)
+        self.assertIn(Action.ATTACK_N, env.legal_actions())
+        self.assertIn(Action.SHOOT_PISTOL_N, env.legal_actions())
+        env.step("attack_n")
+        finish = env.step("move_n")
+        self.assertIn("apex_seal:1", finish.events)
+        self.assertEqual(env.player.hp, 100)
+        self.assertFalse(env.apex_cage)
+
+    def test_barrage_charge_gravity_and_exposure(self):
+        env = ArenaEnv(campaign_config(100))
+        boss = env.boss
+        boss.seals = 1
+        env.player.position = env.apex_seals[1]
+        events = []
+        env._resolve_apex(boss, events)
+        self.assertNotIn(env.player.position, boss.danger)
+        env._resolve_apex(boss, events)
+        self.assertEqual(boss.seals, 2)
+        env.player.position = (10, 13)
+        env._resolve_apex(boss, events)
+        self.assertIn(env.apex_seals[2], boss.danger)
+        env._resolve_apex(boss, events)
+        self.assertEqual(boss.seals, 3)
+        env.player.position = env.apex_seals[3]
+        env._resolve_apex(boss, events)
+        env._resolve_apex(boss, events)
+        env._resolve_apex(boss, events)
+        self.assertEqual(boss.seals, 4)
+        self.assertEqual(boss.exposed_rounds, 6)
+        self.assertIn("boss_shield_break", events)
+
+    def test_each_attack_can_hurt_a_player_who_ignores_warning(self):
+        positions = ((0, (10, 15), 26), (1, (14, 11), 16),
+                     (2, (9, 13), 32), (3, (12, 13), 24))
+        for seal, position, damage in positions:
+            env = ArenaEnv(campaign_config(100))
+            boss = env.boss
+            boss.seals = seal
+            env.player.position = position
+            events = []
+            for _ in range(3 if seal in (0, 3) else 2):
+                env._resolve_apex(boss, events)
+            self.assertEqual(env.player.hp, 100 - damage, (seal, events))
+
+    def test_each_law_can_defeat_a_stationary_player(self):
+        for seal, position in ((0, (10, 16)), (1, (14, 11)),
+                               (2, (9, 13)), (3, (12, 13))):
+            env = ArenaEnv(campaign_config(100))
+            env.boss.seals = seal
+            env.player.position = position
+            env.round = 3
+            for _ in range(32):
+                if env.done:
+                    break
+                env.step("wait")
+            self.assertTrue(env.done, seal)
+            self.assertEqual(env.player.hp, 0, seal)
+
+    def test_default_hybrid_and_rule_finish(self):
+        for rule in (False, True):
+            env, agent = ArenaEnv(campaign_config(100)), RuleAgent()
+            events = []
+            for _ in range(180):
+                if env.done:
+                    break
+                action = (agent.act(env) if rule else
+                          select_action({action.value: 1.0 for action in env.legal_actions()}, env, "hybrid")[0])
+                events.extend(env.step(action).events)
+            self.assertTrue(env.done)
+            self.assertEqual(env.player.hp, 100)
+            self.assertIn("boss_defeated", events)
+            self.assertEqual(events.count("boss_shield_break"), 2)
 
 
 if __name__ == "__main__":

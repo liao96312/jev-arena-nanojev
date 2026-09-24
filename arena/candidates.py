@@ -1,6 +1,6 @@
 from .entities import Action
 from .env import ArenaEnv
-from .boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
+from .boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
 
 
 def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
@@ -40,6 +40,8 @@ def _immediate_consequence(env: ArenaEnv, action: Action) -> str:
             parts.append(f"rail_locks {len(env.boss.broken_locks)}->{len(simulation.boss.broken_locks)}")
         if isinstance(env.boss, NullWeaver) and simulation.boss.node_index != env.boss.node_index:
             parts.append(f"nodes {env.boss.node_index}->{simulation.boss.node_index}")
+        if isinstance(env.boss, ApexArbiter) and simulation.boss.seals != env.boss.seals:
+            parts.append(f"seals {env.boss.seals}->{simulation.boss.seals}")
         if simulation.boss.exposed_rounds and not env.boss.exposed_rounds:
             parts.append("core exposed")
         if simulation.boss.hp != env.boss.hp:
@@ -89,7 +91,9 @@ def build_candidates(env: ArenaEnv) -> dict[str, str]:
         description = descriptions[action]
         if action.value.startswith("attack_"):
             target = env.add(env.player.position, action.value[-1])
-            description += "; barrel blast" if target in env.barrels else "; enemy"
+            description += ("; break cage gate" if isinstance(env.boss, ApexArbiter) and
+                            target == env.boss.gate and target in env.apex_cage else
+                            "; barrel blast" if target in env.barrels else "; enemy")
         elif action.value.startswith("move_"):
             target = env.add(env.player.position, action.value[-1])
             if target in env.fires:

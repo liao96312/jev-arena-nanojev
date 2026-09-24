@@ -5,7 +5,7 @@ from pathlib import Path
 
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
-from arena.boss import ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, SiegeLeviathan, StormChoir, VoidAngler
+from arena.boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, SiegeLeviathan, StormChoir, VoidAngler
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
@@ -68,7 +68,10 @@ class ArenaRenderer:
         for y in range(env.config.height):
             for x in range(env.config.width):
                 rect = pg.Rect(x * self.CELL, y * self.CELL, self.CELL, self.CELL)
-                if env.null_nodes:
+                if env.apex_seals:
+                    pg.draw.rect(self.screen, (27, 28, 43) if (x + y) % 2 else (32, 33, 51), rect)
+                    pg.draw.rect(self.screen, (92, 78, 111), rect, 1)
+                elif env.null_nodes:
                     pg.draw.rect(self.screen, (24, 29, 39) if (x + y) % 2 else (29, 35, 46), rect)
                     pg.draw.rect(self.screen, (55, 77, 89), rect, 1)
                 elif env.rail_locks:
@@ -96,6 +99,17 @@ class ArenaRenderer:
                     pg.draw.rect(self.screen, colors["grid"], rect, 1)
         for position in env.walls:
             self._sprite(position, "wall")
+        for x, y in env.apex_cage:
+            rect = pg.Rect(x * self.CELL + 2, y * self.CELL + 2, self.CELL - 4, self.CELL - 4)
+            pg.draw.rect(self.screen, (255, 115, 57), rect, 3, border_radius=4)
+            pg.draw.line(self.screen, (255, 220, 126), rect.midtop, rect.midbottom, 2)
+        for index, position in enumerate(env.apex_seals):
+            color = ((255, 151, 75), (111, 214, 255), (243, 152, 255), (138, 243, 157))[index]
+            active = isinstance(env.boss, ApexArbiter) and index < env.boss.seals
+            center = (position[0] * self.CELL + self.CELL // 2,
+                      position[1] * self.CELL + self.CELL // 2)
+            pg.draw.circle(self.screen, color, center, 16, 4 if active else 2)
+            pg.draw.circle(self.screen, color, center, 6 if active else 3)
         for x, y in env.null_void:
             rect = pg.Rect(x * self.CELL + 2, y * self.CELL + 2,
                            self.CELL - 4, self.CELL - 4)
@@ -241,7 +255,16 @@ class ArenaRenderer:
             mirror = isinstance(env.boss, MirrorSeraph)
             siege = isinstance(env.boss, SiegeLeviathan)
             null = isinstance(env.boss, NullWeaver)
-            self._sprite(boss_position, "boss_null_weaver" if null else
+            apex = isinstance(env.boss, ApexArbiter)
+            if apex:
+                rush = next((event.split(":") for event in events
+                             if event.startswith("apex_fire:charge:")), None)
+                if rush:
+                    travel = 2 * progress if progress <= .5 else 2 * (1 - progress)
+                    boss_position = (env.boss.position[0] + (int(rush[2]) - env.boss.position[0]) * travel,
+                                     env.boss.position[1] + (int(rush[3]) - env.boss.position[1]) * travel)
+            self._sprite(boss_position, "boss_apex_arbiter" if apex else
+                         "boss_null_weaver" if null else
                          "boss_siege_leviathan" if siege else
                          "boss_mirror_seraph" if mirror else
                          "boss_iron_gardener" if iron else
@@ -250,7 +273,8 @@ class ArenaRenderer:
                          "boss_storm_choir" if storm else
                          "boss_furnace_hydra" if furnace else "boss_prism_warden")
             if "boss_shield_break" in events:
-                self._sprite(boss_position, "effect_boss_grid_fracture" if null else
+                self._sprite(boss_position, "effect_boss_law_convergence" if apex else
+                             "effect_boss_grid_fracture" if null else
                              "effect_boss_railgun" if siege else
                              "effect_boss_mirror_shards" if mirror else
                              "effect_boss_plasma_thorns" if iron else
@@ -262,6 +286,21 @@ class ArenaRenderer:
                 target = next(event.split(":") for event in events if event.startswith("rail_fire:"))
                 self._sprite((int(target[2]) if target[1] == "v" else 10,
                               10 if target[1] == "v" else int(target[2])), "effect_boss_railgun")
+            if apex:
+                fired = next((event.split(":") for event in events
+                              if event.startswith("apex_fire:")), None)
+                if fired:
+                    effect = {"cage": "effect_boss_magma_wave", "barrage": "effect_boss_chain_lightning",
+                              "charge": "effect_boss_mirror_shards", "gravity": "effect_boss_gravity_vortex"}[fired[1]]
+                    if fired[1] == "barrage":
+                        safe = (0 if env.boss.seals < 4 else
+                                ((env.boss.finale_cycles - 1) // 2 + 1) % 3)
+                        for y in (6, 9, 12, 15):
+                            for x in range(2, 18):
+                                if x % 3 != safe and (x, y) not in env.walls | env.pits:
+                                    self._sprite((x, y), effect)
+                    else:
+                        self._sprite((int(fired[2]), int(fired[3])), effect)
             if any(event.startswith("boss_hit:") for event in events):
                 center = (round((boss_position[0] + .5) * self.CELL),
                           round((boss_position[1] + .5) * self.CELL))
@@ -430,6 +469,10 @@ class ArenaRenderer:
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          f"逻辑节点 {env.boss.node_index}/4")
                 label, tint = "归零织机", (160, 227, 255)
+            elif isinstance(env.boss, ApexArbiter):
+                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                         f"四印 {env.boss.seals}/4")
+                label, tint = "顶点裁决者", (255, 222, 151)
             elif isinstance(env.boss, StormChoir):
                 state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          "接地柱 0/4" if env.boss.target is None else
@@ -467,6 +510,10 @@ class ArenaRenderer:
                 if env.boss.erase_targets:
                     self._text(f"删格倒计时：{env.boss.erase_countdown}", left, 312,
                                (249, 170, 215), small=True)
+            if isinstance(env.boss, ApexArbiter) and not env.boss.exposed_rounds:
+                names = {"cage": "熔锁牢笼", "barrage": "雷幕弹雨", "charge": "镜面冲撞", "gravity": "坍缩漩涡"}
+                self._text(f"当前法则：{names[env.boss.kind]} · 预警 {env.boss.countdown}",
+                           left, 289, (255, 215, 167), small=True)
         self._text(f"智能体：{AGENT_NAMES.get(agent, agent)}", left, 55, colors["muted"])
         self._text(f"动作：{ACTION_NAMES.get(action, action)}", left, 80, colors["text"])
         self._text(f"推理耗时：{latency_ms:.1f} 毫秒", left, 105, colors["muted"])
@@ -542,7 +589,8 @@ class ArenaRenderer:
                      "effect_boss_plasma_thorns", "boss_mirror_seraph",
                      "effect_boss_mirror_shards", "boss_siege_leviathan",
                      "effect_boss_railgun", "boss_null_weaver",
-                     "effect_boss_grid_fracture"):
+                     "effect_boss_grid_fracture", "boss_apex_arbiter",
+                     "effect_boss_law_convergence"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
             cropped = source.subsurface(bounds)
@@ -572,6 +620,8 @@ class ArenaRenderer:
                 limit = round(self.CELL * (4.2 if name == "boss_siege_leviathan" else 2.2))
             elif name in ("boss_null_weaver", "effect_boss_grid_fracture"):
                 limit = round(self.CELL * (3.8 if name == "boss_null_weaver" else 2.3))
+            elif name in ("boss_apex_arbiter", "effect_boss_law_convergence"):
+                limit = round(self.CELL * (4.2 if name == "boss_apex_arbiter" else 2.5))
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -745,6 +795,24 @@ class ArenaRenderer:
         self._telegraph_line(start_pixel, end_pixel, intent.kind, intent.countdown)
 
     def _boss_telegraph(self, env: ArenaEnv) -> None:
+        if isinstance(env.boss, ApexArbiter):
+            if not env.boss.countdown:
+                return
+            overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
+            palette = {"cage": (255, 137, 63), "barrage": (98, 197, 255),
+                       "charge": (222, 133, 255), "gravity": (112, 237, 157)}
+            color = palette[env.boss.kind]
+            for x, y in env.boss.danger:
+                self.pg.draw.rect(overlay, (*color, 115 if env.boss.countdown == 1 else 65),
+                                  (x * self.CELL + 2, y * self.CELL + 2,
+                                   self.CELL - 4, self.CELL - 4), border_radius=4)
+            if env.boss.gate:
+                x, y = env.boss.gate
+                self.pg.draw.rect(overlay, (255, 245, 196, 220),
+                                  (x * self.CELL + 3, y * self.CELL + 3,
+                                   self.CELL - 6, self.CELL - 6), 3, border_radius=4)
+            self.screen.blit(overlay, (0, 0))
+            return
         if isinstance(env.boss, NullWeaver):
             if not env.boss.erase_targets or not env.boss.erase_countdown:
                 return
@@ -1080,6 +1148,11 @@ class ArenaRenderer:
             elif event == "null_displace": labels.append("被断裂地板弹开！")
             elif event == "null_reverse_write": labels.append("逆向写入完成：核心开放！")
             elif event.startswith("null_block:"): labels.append("Boss 封锁了一类动作，查看右侧提示！")
+            elif event.startswith("apex_aim:"): labels.append("裁决法则锁定：按地面预警走位！")
+            elif event.startswith("apex_cage:"): labels.append("牢笼成形：击碎白色闸门后离开！")
+            elif event == "apex_gate_break": labels.append("闸门击碎：火流即将反向回灌！")
+            elif event.startswith("apex_fire:"): labels.append("裁决攻击爆发！")
+            elif event.startswith("apex_seal:"): labels.append("封印充能！")
             elif event.startswith("shoot_bow:"): labels.append("复合弓射击！")
             elif event.startswith("shoot_pistol:"): labels.append("脉冲手枪射击！")
             elif event.startswith("emp:"): labels.append(f"EMP 控制 {event.split(':')[1]} 个敌人！")
