@@ -232,9 +232,11 @@ class ArenaRenderer:
                 continue
             if event.startswith("furnace_wave:"):
                 x = int(event.split(":")[1])
+                width = (0, -1, 1) if isinstance(env.boss, FurnaceHydra) and env.boss.hp <= env.boss.max_hp // 2 else (0,)
                 for y in range(8, 17):
                     if progress >= (y - 8) / 13:
-                        self._sprite((x, y), "effect_boss_magma_wave")
+                        for dx in width:
+                            self._sprite((x + dx, y), "effect_boss_magma_wave")
                 continue
             if event.startswith("storm_chain:"):
                 values = [int(value) for value in event.split(":")[1:]]
@@ -618,7 +620,8 @@ class ArenaRenderer:
                 return
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
             if boss.attack_kind == "wave":
-                cells = [(boss.head_x, y) for y in range(8, 17)]
+                width = (0, -1, 1) if boss.hp <= boss.max_hp // 2 else (0,)
+                cells = [(boss.head_x + dx, y) for dx in width for y in range(8, 17)]
             else:
                 x, y = boss.target
                 cells = [(x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
@@ -626,7 +629,9 @@ class ArenaRenderer:
                 if not env.in_bounds((x, y)):
                     continue
                 safe = boss.attack_kind == "wave" and (x, y) == (boss.head_x, 12)
-                self.pg.draw.rect(overlay, (70, 215, 250, 115) if safe else (255, 98, 34, 110),
+                edge = boss.attack_kind == "wave" and x != boss.head_x
+                self.pg.draw.rect(overlay, (70, 215, 250, 115) if safe else
+                                  (255, 146, 70, 85) if edge else (255, 98, 34, 110),
                                   (x * self.CELL + 2, y * self.CELL + 2,
                                    self.CELL - 4, self.CELL - 4), border_radius=5)
             self.screen.blit(overlay, (0, 0))
@@ -739,6 +744,8 @@ class ArenaRenderer:
             elif event == "boss_defeated": labels.append("Boss 已击败！")
             elif event.startswith("furnace_aim:wave:"): labels.append("熔岩波预警：蓝色冷却阀可挡火！")
             elif event.startswith("furnace_aim:fireball:"): labels.append("火球锁定：离开橙色落点！")
+            elif event == "furnace_phase_two": labels.append("熔炉过热：熔岩波变宽，火球会点燃地面！")
+            elif event.startswith("furnace_ignite:"): labels.append("火球留下短暂燃烧格！")
             elif event.startswith("furnace_wave:"): labels.append("熔岩波来袭！")
             elif event.startswith("furnace_fireball:"): labels.append("熔炉火球发射！")
             elif event.startswith("furnace_valve:"): labels.append("冷却阀反制成功！")

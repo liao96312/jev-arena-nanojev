@@ -22,8 +22,8 @@ class PrismWarden:
 @dataclass
 class FurnaceHydra:
     position: tuple[int, int] = (10, 7)
-    hp: int = 72
-    max_hp: int = 72
+    hp: int = 105
+    max_hp: int = 105
     exposed_rounds: int = 0
     valves_opened: set[int] = field(default_factory=set)
     target: tuple[int, int] | None = None

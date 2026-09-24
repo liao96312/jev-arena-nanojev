@@ -10,7 +10,7 @@
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
-[![Tests](https://img.shields.io/badge/Tests-118%20passing-22C55E)](#测试与验证)
+[![Tests](https://img.shields.io/badge/Tests-119%20passing-22C55E)](#测试与验证)
 
 不是预先写好的战斗脚本，而是让模型在每一步面对真实候选动作，判断移动、攻击、射击、治疗、冲刺与环境连锁。
 
@@ -39,7 +39,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 | 安全生成 | 宝石、血包和关键道具保证存在无伤可达路线，出生点不会立刻遭到激光锁定 |
 | 中文界面 | 实时显示模型概率、选择依据、推理耗时、关卡难度、武器弹药和技能状态 |
 | 首个 Boss | 第 10 关棱镜守卫：4 根错位镜柱每轮护盾只能各用一次；诱导 3 次不同反射破盾，躲开有预告的突进，再攻击核心 |
-| 第二只 Boss | 第 20 关熔炉三头机：更大的锻炉形房间、熔岩边道、弓与箭束补给；火球锁定伤害 16、熔岩波伤害 22；站上对应冷却阀化解火线，3 阀完成后攻击核心 |
+| 第二只 Boss | 第 20 关熔炉三头机：105 点生命，半血后二阶段熔岩波扩至三列、火球短暂点燃地面；冷却阀仍可化解对应主火线，三阀完成后攻击核心 |
 | 第三只 Boss | 第 30 关风暴合唱环：错位接地柱与蓝色导电位改变雷链；四柱接地后回灌破盾，躲开高压雷爆，再用手枪攻击核心 |
 | 第四只 Boss | 第 40 关时序螳螂：横切 2 格、预告后跃迁 3 格；近斩和延迟残影有独立伤害，站上对应时间锚使残影回放破盾 |
 
@@ -55,7 +55,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 
 ![第 20 关熔炉三头机](assets/screenshots/boss_furnace_hydra.png)
 
-默认 NanoJev 混合策略会依次前往未开启的冷却阀，在火球锁定后离开落点，核心开放时用弓射击。第 10、20 关均以击败 Boss 而非收集宝石作为通关目标；纯模型模式不启用这套战术引导。
+默认 NanoJev 混合策略会依次前往未开启的冷却阀，在火球锁定后离开落点，核心开放时用弓射击；二阶段的燃烧格会在 3 个敌方回合后熄灭。第 10、20 关均以击败 Boss 而非收集宝石作为通关目标；纯模型模式不启用这套战术引导。
 
 第 30 关风暴合唱环的连锁雷网预警；蓝色导电位安全，四座接地柱不排成一线：
 
@@ -180,7 +180,7 @@ Arena 会根据当前局面生成合法动作，并通过克隆环境预演即�
   --agents nanojev --policy hybrid --campaign-level 3 --max-batch-states 2
 ```
 
-当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **118 项回归测试**。
+当前环境、战斗、地图、武器、存档、Replay、搜索与模型适配共有 **119 项回归测试**。
 
 <details>
 <summary><strong>实验与基线结果</strong></summary>

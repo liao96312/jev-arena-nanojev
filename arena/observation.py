@@ -74,6 +74,8 @@ def encode_state(env: ArenaEnv) -> str:
     boss = ""
     if isinstance(env.boss, FurnaceHydra):
         boss = (f" Boss furnace@{env.boss.position[0]},{env.boss.position[1]} hp={env.boss.hp} "
+                f"phase={2 if env.boss.hp <= env.boss.max_hp // 2 else 1} "
+                f"burns={len(env.furnace_burns)} "
                 f"valves={sorted(env.boss.valves_opened)}/3 exposed={env.boss.exposed_rounds} "
                 f"attack={env.boss.attack_kind} aim={env.boss.target or 'none'} "
                 f"dmg=wave{env.boss.wave_damage}/fireball{env.boss.fireball_damage} "

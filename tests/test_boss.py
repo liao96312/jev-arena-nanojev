@@ -182,6 +182,8 @@ class PrismBossTests(unittest.TestCase):
         self.assertTrue(env.done)
         self.assertEqual(env.player.hp, 100)
         self.assertEqual(events.count("boss_shield_break"), 2)
+        self.assertIn("furnace_phase_two", events)
+        self.assertTrue(any(event.startswith("furnace_ignite:") for event in events))
         self.assertIn("boss_defeated", events)
 
     def test_default_hybrid_policy_pursues_furnace_kill_with_flat_model_scores(self):
@@ -196,7 +198,37 @@ class PrismBossTests(unittest.TestCase):
         self.assertTrue(env.done)
         self.assertEqual(env.player.hp, 100)
         self.assertEqual(events.count("boss_shield_break"), 2)
+        self.assertIn("furnace_phase_two", events)
+        self.assertTrue(any(event.startswith("furnace_ignite:") for event in events))
         self.assertIn("boss_defeated", events)
+
+    def test_furnace_phase_two_wide_wave_and_temporary_fire(self):
+        env = ArenaEnv(campaign_config(20))
+        env.round = 3
+        env.boss.hp = 50
+        env.boss.attack_kind = "wave"
+        env.boss.head_x = 10
+        env.boss.target = (10, 16)
+        env.player.position = (11, 14)
+        self.assertIn(("furnace_hydra/wave", 12), env.imminent_threats())
+        env.step(Action.WAIT)
+        wave = env.step(Action.WAIT)
+        self.assertIn("damage:furnace_wave:12", wave.events)
+
+        env = ArenaEnv(campaign_config(20))
+        env.round = 3
+        env.boss.hp = 50
+        env.boss.attack_kind = "fireball"
+        env.boss.target = (10, 12)
+        env.player.position = (16, 16)
+        env.step(Action.WAIT)
+        fireball = env.step(Action.WAIT)
+        self.assertIn("furnace_ignite:11:12", fireball.events)
+        self.assertIn((11, 12), env.fires)
+        self.assertNotIn((10, 12), env.fires)
+        for _ in range(6):
+            env.step(Action.WAIT)
+        self.assertNotIn((11, 12), env.fires)
 
 
 class StormBossTests(unittest.TestCase):

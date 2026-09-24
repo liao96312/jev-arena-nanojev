@@ -149,6 +149,7 @@ class ArenaEnv:
         self.relay_pads: set[tuple[int, int]] = set()
         self.time_anchors: set[tuple[int, int]] = set()
         self.forge_floor: set[tuple[int, int]] = set()
+        self.furnace_burns: dict[tuple[int, int], int] = {}
         if self.config.difficulty_level in (10, 20, 30, 40) and self.config.finish_on_all_gems:
             furnace = self.config.difficulty_level == 20
             storm = self.config.difficulty_level == 30
@@ -580,6 +581,8 @@ class ArenaEnv:
             events.append(f"boss_hit:{actual}")
             if isinstance(entity, PrismWarden) and entity.hp > 0 and entity.hp <= entity.max_hp * 2 // 3 < entity.hp + actual:
                 events.append("boss_prism_phase_two")
+            if isinstance(entity, FurnaceHydra) and entity.hp > 0 and entity.hp <= entity.max_hp // 2 < entity.hp + actual:
+                events.append("furnace_phase_two")
             if entity.hp <= 0:
                 self.boss = None
                 self.kills += 1
@@ -747,8 +750,19 @@ class ArenaEnv:
         return reward
 
     def _resolve_furnace(self, boss: FurnaceHydra, events: list[str]) -> float:
+        for cell, rounds in list(self.furnace_burns.items()):
+            if rounds == 1:
+                del self.furnace_burns[cell]
+                self.fires.remove(cell)
+                events.append(f"furnace_burn_end:{cell[0]}:{cell[1]}")
+            else:
+                self.furnace_burns[cell] = rounds - 1
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
+            if boss.hp <= boss.max_hp // 2 and boss.exposed_rounds == 1:
+                previous = boss.position
+                boss.position = (11 if previous[0] <= 10 else 9, 7)
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:7")
             if not boss.exposed_rounds:
                 boss.valves_opened.clear()
                 events.append("boss_shield_restored")
@@ -770,13 +784,23 @@ class ArenaEnv:
                 boss.valves_opened.add(boss.head_x)
                 events.append(f"furnace_valve:{boss.head_x}")
                 reward += 15
-            elif self.player.position[0] == boss.head_x and 8 <= self.player.position[1] <= 16:
-                reward += self._damage_entity(self.player, boss.wave_damage, events, "furnace_wave")
+            elif 8 <= self.player.position[1] <= 16:
+                offset = abs(self.player.position[0] - boss.head_x)
+                if offset == 0 or (boss.hp <= boss.max_hp // 2 and offset == 1):
+                    damage = boss.wave_damage if offset == 0 else 12
+                    reward += self._damage_entity(self.player, damage, events, "furnace_wave")
         else:
             events.append(f"furnace_fireball:{boss.position[0]}:{boss.position[1]}:"
                           f"{boss.target[0]}:{boss.target[1]}")
             if self._distance(self.player.position, boss.target) <= 1:
                 reward += self._damage_entity(self.player, boss.fireball_damage, events, "furnace_fireball")
+            burn_cell = ((boss.target[0] + 1, boss.target[1])
+                         if boss.target in self.coolant_valves else boss.target)
+            if (boss.hp <= boss.max_hp // 2 and burn_cell not in self.walls | self.coolant_valves |
+                    self.fires | self.medkits | self.bow_pickups | self.arrow_bundles):
+                self.fires.add(burn_cell)
+                self.furnace_burns[burn_cell] = 3
+                events.append(f"furnace_ignite:{burn_cell[0]}:{burn_cell[1]}")
         boss.attacks += 1
         boss.target = None
         if len(boss.valves_opened) == 3:
@@ -1151,9 +1175,11 @@ class ArenaEnv:
         if isinstance(self.boss, PrismWarden) and self.boss.lunge_target and self._distance(position, self.boss.lunge_target) <= 1:
             threats.append(("prism_warden/lunge", self.boss.lunge_damage))
         if isinstance(self.boss, FurnaceHydra) and self.boss.target:
-            if self.boss.attack_kind == "wave" and position[0] == self.boss.head_x and 8 <= position[1] <= 16:
-                if position != (self.boss.head_x, 12):
-                    threats.append(("furnace_hydra/wave", self.boss.wave_damage))
+            if self.boss.attack_kind == "wave" and 8 <= position[1] <= 16:
+                offset = abs(position[0] - self.boss.head_x)
+                if position != (self.boss.head_x, 12) and (
+                        offset == 0 or (self.boss.hp <= self.boss.max_hp // 2 and offset == 1)):
+                    threats.append(("furnace_hydra/wave", self.boss.wave_damage if offset == 0 else 12))
             elif self.boss.attack_kind == "fireball" and self._distance(position, self.boss.target) <= 1:
                 threats.append(("furnace_hydra/fireball", self.boss.fireball_damage))
         if isinstance(self.boss, StormChoir) and self.boss.target:
