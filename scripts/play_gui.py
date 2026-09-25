@@ -185,8 +185,8 @@ def main() -> None:
                 pending, animation, level_advance_at = None, None, 0
                 probabilities, action_name, reason = {}, "-", ""
                 last_step = now
-            frame_ms = 150 if level == 40 else animation_ms
-            step_delay = max(80, round(decision_ms * .6)) if level == 40 else decision_ms
+            frame_ms = 105 if level == 40 else animation_ms
+            step_delay = max(80, round(decision_ms * .45)) if level == 40 else decision_ms
             animation_duration = 1000 if animation and "level_complete" in animation[3] else frame_ms
             if animation and now - animation[4] >= animation_duration:
                 animation = None

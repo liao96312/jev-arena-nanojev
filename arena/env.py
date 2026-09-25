@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import random
 from collections import deque
 from dataclasses import dataclass
@@ -65,7 +66,7 @@ def campaign_config(level: int) -> ArenaConfig:
     if level < 1:
         raise ValueError("level must be positive")
     if level in (10, 20, 30, 40, 50, 60, 70, 80, 90, 100):
-        return ArenaConfig(difficulty_level=level, max_ticks=400 if level == 100 else 300, walls=0, enemies=0, gems=0,
+        return ArenaConfig(difficulty_level=level, max_ticks=400 if level in (10, 100) else 300, walls=0, enemies=0, gems=0,
                            fires=0, spikes=0, pits=0, barrels=0, medkits=0,
                            enemy_hp_bonus=level - 1, action_points=2, spawn_protection_rounds=2,
                            finish_on_all_gems=True)
@@ -163,8 +164,10 @@ class ArenaEnv:
         self.null_void: set[tuple[int, int]] = set()
         self.apex_seals: tuple[tuple[int, int], ...] = ()
         self.apex_cage: set[tuple[int, int]] = set()
+        self.apex_fast_volley_resolved = False
         self.vine_seeds: dict[tuple[int, int], int] = {}
         self.vine_walls: set[tuple[int, int]] = set()
+        self.iron_spores: dict[tuple[int, int], int] = {}
         self.forge_floor: set[tuple[int, int]] = set()
         self.furnace_burns: dict[tuple[int, int], int] = {}
         if self.config.difficulty_level in (10, 20, 30, 40, 50, 60, 70, 80, 90, 100) and self.config.finish_on_all_gems:
@@ -432,16 +435,46 @@ class ArenaEnv:
     def boss_ray(self) -> tuple[tuple[int, int], ...]:
         if not isinstance(self.boss, PrismWarden) or self.boss.target is None:
             return ()
-        cells = ray_cells(self.boss.position, self.boss.target)
+        target = self.boss.target
+        if self.boss.hp <= self.boss.max_hp // 3:
+            target = self._prism_spin_target(self.boss.spin_step)
+        cells = tuple(cell for cell in ray_cells(self.boss.position, target) if self.in_bounds(cell))
+        active = self.reflectors - self.boss.used_reflectors if not self.boss.reflector_lockout else set()
         stop = next((index for index, cell in enumerate(cells)
-                     if cell in self.walls or cell in self.reflectors - self.boss.used_reflectors), None)
+                     if cell in self.walls or cell in active), None)
         return cells[:stop + 1] if stop is not None else cells
 
+    def _prism_spin_target(self, step: int) -> tuple[int, int]:
+        angle = step * math.tau / 24
+        return (self.boss.position[0] + round(16 * math.cos(angle)),
+                self.boss.position[1] + round(16 * math.sin(angle)))
+
+    def prism_rays(self) -> tuple[tuple[tuple[int, int], ...], ...]:
+        boss = self.boss
+        if not isinstance(boss, PrismWarden) or boss.target is None:
+            return ()
+        primary = self.boss_ray()
+        if boss.hp <= boss.max_hp // 3:
+            targets = [self._prism_spin_target((boss.spin_step + offset) % 24)
+                       for offset in (8, 16)]
+        else:
+            targets = [(boss.target[0] - 3, boss.target[1]),
+                       (boss.target[0] + 3, boss.target[1])]
+        rays = [primary]
+        active = self.reflectors - boss.used_reflectors if not boss.reflector_lockout else set()
+        for target in targets:
+            cells = tuple(cell for cell in ray_cells(boss.position, target) if self.in_bounds(cell))
+            stop = next((index for index, cell in enumerate(cells)
+                         if cell in self.walls or cell in active), None)
+            rays.append(cells[:stop + 1] if stop is not None else cells)
+        return tuple(rays)
+
     def prism_attack_cells(self) -> set[tuple[int, int]]:
-        path = self.boss_ray()
-        if not path:
+        rays = self.prism_rays()
+        if not rays:
             return set()
-        cells = set(path)
+        path = rays[0]
+        cells = set().union(*rays)
         if self.boss.sweep and path[-1] not in self.reflectors | self.walls:
             x, y = path[-1]
             cells.update((x + dx, y + dy) for dx, dy in DIRECTIONS.values()
@@ -451,7 +484,8 @@ class ArenaEnv:
     def prism_baits(self) -> set[tuple[int, int]]:
         if not isinstance(self.boss, PrismWarden) or self.boss.position[1] != 8:
             return set()
-        unused = self.reflectors - self.boss.used_reflectors
+        unused = (self.reflectors - self.boss.used_reflectors
+                  if not self.boss.reflector_lockout else set())
         baits = set()
         for y in range(14, 17):
             for x in range(4, 16):
@@ -524,7 +558,9 @@ class ArenaEnv:
             if (self.enemy_at(target) or self.boss_at(target) or target in self.barrels or
                     target == getattr(self.boss, "gate", None) and target in self.apex_cage or
                     isinstance(self.boss, FurnaceHydra) and self.boss.target and
-                    self.boss.attack_kind == "wave" and target == (self.boss.head_x, 12) or
+                    self.boss.attack_kind in ("wave", "triple") and
+                    target == (self.boss.head_x, 12) and
+                    self.boss.head_x not in self.boss.valves_opened or
                     isinstance(self.boss, VoidAngler) and self.boss.target == target and
                     self.boss.attack_kind == "mine" and target not in self.boss.drained_nodes or
                     isinstance(self.boss, IronGardener) and self.boss.target and
@@ -610,6 +646,7 @@ class ArenaEnv:
         self.player.invulnerable = action.value.startswith("dash_")
         if self.ap_remaining == self.config.action_points:
             self._tick_cooldowns()
+            self.apex_fast_volley_resolved = False
         origin = self.player.position
         reward = 0.05
         events: list[str] = []
@@ -640,13 +677,17 @@ class ArenaEnv:
                 self.boss.gate_broken = True
                 events.append("apex_gate_break")
             elif (isinstance(self.boss, FurnaceHydra) and self.boss.target and
-                  self.boss.attack_kind == "wave" and target == (self.boss.head_x, 12)):
+                  self.boss.attack_kind in ("wave", "triple") and
+                  target == (self.boss.head_x, 12) and
+                  self.boss.head_x not in self.boss.valves_opened):
                 self.boss.valves_opened.add(self.boss.head_x)
+                self.boss.valve_heat[self.boss.head_x] = 2
                 events.append(f"furnace_valve_strike:{self.boss.head_x}")
                 reward += 15
             elif (isinstance(self.boss, VoidAngler) and self.boss.attack_kind == "mine" and
                   self.boss.target == target and target not in self.boss.drained_nodes):
                 self.boss.drained_nodes.add(target)
+                self.boss.node_aftershock[target] = 2
                 events.append(f"void_node_cut:{target[0]}:{target[1]}")
                 reward += 15
                 if len(self.boss.drained_nodes) == 3:
@@ -666,7 +707,8 @@ class ArenaEnv:
                     self.boss.target = None
                     events.append("boss_shield_break")
             elif (isinstance(self.boss, ChronoMantis) and self.boss.phase == "leap" and
-                  target == self.boss.leap_target and target in self.time_anchors):
+                  target == self.boss.leap_target and target in self.time_anchors and
+                  target not in self.boss.anchor_cooldowns):
                 self.boss.primed_anchor = target
                 events.append(f"chrono_anchor_prime:{target[0]}:{target[1]}")
             elif isinstance(self.boss, NullWeaver) and target in self.null_nodes and not self.boss.exposed_rounds:
@@ -735,9 +777,16 @@ class ArenaEnv:
             if not self.hooked_actions:
                 events.append("void_hook_release")
         self.ap_remaining -= self._action_cost(action)
+        if (self.player.hp > 0 and self.ap_remaining == 1 and
+                isinstance(self.boss, ApexArbiter) and self.boss.barrage_volley == 2 and
+                self.boss.countdown == 1):
+            reward += self._resolve_apex(self.boss, events)
+            self.apex_fast_volley_resolved = True
+            events.append("apex_fast_barrage")
         if self.player.hp > 0 and self.ap_remaining == 0:
             reward += self._resolve_enemy_intents(events)
-            reward += self._resolve_boss(events)
+            if not self.apex_fast_volley_resolved:
+                reward += self._resolve_boss(events)
             events.append("round_end")
             if self.player.hp > 0:
                 self.round += 1
@@ -813,9 +862,9 @@ class ArenaEnv:
             boss.exposed_rounds = 5
             boss.blocked_kind = None
             boss.erase_targets.clear()
+            boss.fracture_cells.clear()
             boss.erase_countdown = 0
             boss.warp_target = None
-            self.null_void.clear()
             events.extend(("boss_shield_break", "null_reverse_write"))
         return 15.0
 
@@ -1013,11 +1062,16 @@ class ArenaEnv:
                                         (max(6, min(14, self.player.position[0])),
                                          max(7, min(11, self.player.position[1] - 4))), events)
             return 0.0
-        if isinstance(boss, PrismWarden) and boss.reflector_regen:
-            boss.reflector_regen -= 1
-            if not boss.reflector_regen:
-                boss.used_reflectors.clear()
-                events.append("boss_reflectors_recharged")
+        if isinstance(boss, PrismWarden):
+            if boss.reflector_lockout and (boss.reflector_lockout > 1 or boss.target is None):
+                boss.reflector_lockout -= 1
+            for mirror, rounds in list(boss.reflector_cooldowns.items()):
+                if rounds <= 1 and boss.target is None:
+                    del boss.reflector_cooldowns[mirror]
+                    boss.used_reflectors.discard(mirror)
+                    events.append(f"boss_reflector_recharged:{mirror[0]}:{mirror[1]}")
+                elif rounds > 1:
+                    boss.reflector_cooldowns[mirror] = rounds - 1
         if isinstance(boss, FurnaceHydra):
             reward = self._resolve_furnace(boss, events)
             self._summon_boss_minion(boss, events)
@@ -1048,7 +1102,6 @@ class ArenaEnv:
                                         events)
             if not boss.exposed_rounds:
                 boss.reflections = 0
-                boss.reflector_regen = 2
                 boss.lunge_used = False
                 boss.target = None
                 events.append("boss_shield_restored")
@@ -1080,16 +1133,26 @@ class ArenaEnv:
             boss.sweep = phase_two and not cover_attack and boss.shots_fired % 3 == 1
             events.append("boss_cover_aim" if cover_attack else "boss_sweep_aim" if boss.sweep else "boss_aim")
             return 0.0
-        path = self.boss_ray()
+        rays = self.prism_rays()
+        active = self.reflectors - boss.used_reflectors if not boss.reflector_lockout else set()
+        path = (next((ray for ray in rays if ray and ray[-1] in active),
+                     rays[0]) if boss.hp <= boss.max_hp // 3 else rays[0])
         endpoint = path[-1] if path else boss.position
-        reflected = endpoint in self.reflectors - boss.used_reflectors
-        events.append(f"boss_prism_shot:{boss.position[0]}:{boss.position[1]}:"
-                      f"{endpoint[0]}:{endpoint[1]}:{int(reflected)}")
+        reflected = endpoint in active
+        for ray in rays:
+            if ray:
+                end = ray[-1]
+                events.append(f"boss_prism_shot:{boss.position[0]}:{boss.position[1]}:"
+                              f"{end[0]}:{end[1]}:{int(reflected and ray is path)}")
         if boss.sweep and not reflected:
             events.append("boss_prism_sweep")
         reward = 0.0
+        side_hit = any(self.player.position in ray for ray in rays[1:])
+        beam_hit = False
         if reflected:
             boss.used_reflectors.add(endpoint)
+            boss.reflector_cooldowns[endpoint] = 6
+            boss.reflector_lockout = 3
             boss.reflections += 1
             events.append(f"boss_reflect:{boss.reflections}")
             if (boss.reflections < 3 and self._distance(endpoint, self.player.position) <= 5 and
@@ -1102,7 +1165,7 @@ class ArenaEnv:
                                   f"{self.player.position[0]}:{self.player.position[1]}")
                     reward += self._damage_entity(self.player, 7, events, "boss_prism_followup")
             if boss.reflections == 3:
-                boss.exposed_rounds = 3
+                boss.exposed_rounds = 5
                 events.append("boss_shield_break")
                 reward += 15
         elif endpoint in self.breakable_walls:
@@ -1111,7 +1174,12 @@ class ArenaEnv:
             events.append(f"boss_cover_break:{endpoint[0]}:{endpoint[1]}")
         elif self.player.position in self.prism_attack_cells():
             reward += self._damage_entity(self.player, boss.beam_damage, events, "boss_prism")
+            beam_hit = True
+        if side_hit and not beam_hit:
+            reward += self._damage_entity(self.player, boss.beam_damage, events, "boss_prism")
         boss.shots_fired += 1
+        if boss.hp <= boss.max_hp // 3:
+            boss.spin_step = (boss.spin_step + 2) % 24
         if boss.exposed_rounds == 0:
             if boss.reflections >= 2 and not boss.lunge_used and self.rng.random() < .45:
                 target = (max(5, min(14, self.player.position[0])),
@@ -1138,6 +1206,12 @@ class ArenaEnv:
         return reward
 
     def _resolve_furnace(self, boss: FurnaceHydra, events: list[str]) -> float:
+        heat_reward = 0.0
+        for valve_x, rounds in list(boss.valve_heat.items()):
+            if rounds > 1:
+                boss.valve_heat[valve_x] = rounds - 1
+            elif self.player.position == (valve_x, 12):
+                heat_reward += self._damage_entity(self.player, 10, events, "furnace_valve_heat")
         for cell, rounds in list(self.furnace_burns.items()):
             if rounds == 1:
                 del self.furnace_burns[cell]
@@ -1155,37 +1229,48 @@ class ArenaEnv:
                     events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:{boss.position[1]}")
             if not boss.exposed_rounds:
                 boss.valves_opened.clear()
+                boss.valve_heat.clear()
                 events.append("boss_shield_restored")
-            return 0.0
+            return heat_reward
         if boss.target is None:
-            boss.attack_kind = ("wave" if boss.attacks == 0 or boss.non_wave_streak >= 2 else
+            boss.attack_kind = ("triple" if boss.attacks >= 2 and boss.attacks % 4 == 2 else
+                                "wave" if boss.attacks == 0 or boss.non_wave_streak >= 2 else
                                 self.rng.choice(("wave", "wave", "fireball")))
-            if boss.attack_kind == "wave":
+            if boss.attack_kind in ("wave", "triple"):
                 remaining = [x for x in (10, 7, 13) if x not in boss.valves_opened]
-                boss.head_x = self.rng.choice(remaining or [10, 7, 13])
-                boss.wave_columns = ((boss.head_x - 1, boss.head_x, boss.head_x + 1)
+                boss.head_x = (min(remaining, key=lambda x: abs(x - self.player.position[0]))
+                               if boss.attack_kind == "triple" and remaining else
+                               self.rng.choice(remaining or [10, 7, 13]))
+                boss.wave_columns = ((7, 10, 13) if boss.attack_kind == "triple" else
+                                     (boss.head_x - 1, boss.head_x, boss.head_x + 1)
                                      if boss.hp <= boss.max_hp // 2 and self.rng.random() < .5 else
                                      (boss.head_x,))
                 boss.wave_rapid = False
-                boss.combo_queued = (boss.hp <= boss.max_hp // 2 and self.rng.random() < .5)
+                boss.combo_queued = (boss.attack_kind == "wave" and boss.hp <= boss.max_hp // 2
+                                     and self.rng.random() < .5)
                 boss.target = (boss.head_x, 16)
             else:
                 boss.target = self.player.position
             self._step_exposed_boss(boss,
                                     (max(8, min(12, boss.target[0])), 7), events)
             events.append(f"furnace_aim:{boss.attack_kind}:{boss.target[0]}:{boss.target[1]}")
-            return 0.0
-        reward = 0.0
-        if boss.attack_kind == "wave":
+            return heat_reward
+        reward = heat_reward
+        if boss.attack_kind in ("wave", "triple"):
             columns = boss.wave_columns or ((boss.head_x - 1, boss.head_x, boss.head_x + 1)
                                             if boss.hp <= boss.max_hp // 2 else (boss.head_x,))
             events.append(f"furnace_wave:{boss.head_x}:{','.join(map(str, columns))}:{int(boss.wave_rapid)}")
-            if self.player.position == (boss.head_x, 12) and not boss.wave_rapid:
-                boss.valves_opened.add(boss.head_x)
-                events.append(f"furnace_valve:{boss.head_x}")
+            if (self.player.position in self.coolant_valves and self.player.position[0] in columns and
+                    self.player.position[0] not in boss.valves_opened and
+                    (boss.attack_kind == "triple" or self.player.position[0] == boss.head_x) and
+                    not boss.wave_rapid):
+                valve_x = self.player.position[0]
+                boss.valves_opened.add(valve_x)
+                boss.valve_heat[valve_x] = 2
+                events.append(f"furnace_valve:{valve_x}")
                 reward += 15
             elif 8 <= self.player.position[1] <= 16 and self.player.position[0] in columns:
-                damage = boss.wave_damage if self.player.position[0] == boss.head_x else 12
+                damage = boss.wave_damage if boss.attack_kind == "triple" or self.player.position[0] == boss.head_x else 12
                 reward += self._damage_entity(self.player, damage, events, "furnace_wave")
         else:
             events.append(f"furnace_fireball:{boss.position[0]}:{boss.position[1]}:"
@@ -1200,12 +1285,15 @@ class ArenaEnv:
                 self.furnace_burns[burn_cell] = 3
                 events.append(f"furnace_ignite:{burn_cell[0]}:{burn_cell[1]}")
         boss.attacks += 1
-        boss.non_wave_streak = 0 if boss.attack_kind == "wave" else boss.non_wave_streak + 1
+        boss.non_wave_streak = 0 if boss.attack_kind in ("wave", "triple") else boss.non_wave_streak + 1
         boss.target = None
         if len(boss.valves_opened) == 3:
             boss.exposed_rounds = 3
             boss.position = (10, 7)
             boss.combo_queued = False
+            if self.player.loadout.bow and self.player.loadout.arrows < 3:
+                self.player.loadout.arrows += 3
+                events.append("furnace_restock_arrows")
             events.append("boss_shield_break")
         elif boss.attack_kind == "wave" and boss.combo_queued:
             boss.combo_queued = False
@@ -1246,15 +1334,44 @@ class ArenaEnv:
                     events.append("storm_relay_shift")
                 events.append("boss_shield_restored")
             return reward
+        if boss.overdrive_rounds:
+            previous = boss.position
+            side = self.rng.choice((-2, -1, 1, 2))
+            flank = (max(3, min(16, self.player.position[0] + side)), self.player.position[1])
+            self._step_exposed_boss(boss, flank, [])
+            self._step_exposed_boss(boss, self.player.position, [])
+            if boss.position != previous:
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:"
+                              f"{boss.position[0]}:{boss.position[1]}")
+                events.append(f"storm_overdrive_move:{previous[0]}:{previous[1]}:"
+                              f"{boss.position[0]}:{boss.position[1]}")
+            if self._distance(boss.position, self.player.position) <= 1:
+                reward += self._damage_entity(self.player, boss.overdrive_damage,
+                                              events, "storm_overdrive")
+            boss.overdrive_rounds -= 1
+            if not boss.overdrive_rounds:
+                boss.fatigue_rounds = 2
+                events.append("storm_overdrive_exhausted")
+            return reward
+        if boss.fatigue_rounds:
+            boss.fatigue_rounds -= 1
+            events.append("storm_fatigued")
+            return reward
+        if boss.attacks >= boss.next_overdrive_attack and boss.target is None:
+            boss.next_overdrive_attack = boss.attacks + self.rng.randint(3, 5)
+            boss.attacks += 1
+            boss.overdrive_rounds = 3
+            events.append("storm_overdrive_charge")
+            return reward
         if boss.target is None:
             boss.attack_kind = ("chain" if boss.attacks == 0 or boss.attacks % 3 == 2 else
                                 self.rng.choice(("chain", "chain", "surge")))
             previous = boss.position
             player_x = self.player.position[0]
-            goal_x = min(12, max(8, player_x + (-2 if boss.attack_kind == "chain" else 2)))
-            speed = 2 if boss.attack_kind == "chain" else 3
+            goal_x = min(13, max(7, player_x + self.rng.choice((-3, -2, -1, 1, 2, 3))))
+            speed = self.rng.choice((2, 3))
             x = boss.position[0] + max(-speed, min(speed, goal_x - boss.position[0]))
-            destination = (x, 5 if boss.attack_kind == "chain" else 6)
+            destination = (x, self.rng.choice((5, 6, 7)))
             if destination != self.player.position:
                 boss.position = destination
             if boss.position != previous:
@@ -1288,13 +1405,19 @@ class ArenaEnv:
             boss.net_target = self.player.position
             events.append(f"storm_net_place:{boss.net_target[0]}:{boss.net_target[1]}")
         if not boss.exposed_rounds:
+            side = self.rng.choice((-3, -2, 2, 3))
             self._step_exposed_boss(boss,
-                                    (max(8, min(12, self.player.position[0] +
-                                                 (2 if self.player.position[0] <= boss.position[0] else -2))),
-                                     6), events)
+                                    (max(7, min(13, self.player.position[0] + side)),
+                                     self.rng.choice((5, 6, 7))), events)
         return reward
 
     def _resolve_chrono(self, boss: ChronoMantis, events: list[str]) -> float:
+        for anchor, rounds in list(boss.anchor_cooldowns.items()):
+            if rounds <= 1:
+                del boss.anchor_cooldowns[anchor]
+                events.append(f"chrono_anchor_ready:{anchor[0]}:{anchor[1]}")
+            else:
+                boss.anchor_cooldowns[anchor] = rounds - 1
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if boss.exposed_rounds == 3:
@@ -1329,13 +1452,18 @@ class ArenaEnv:
                 boss.retreat_target = None
                 events.append("boss_shield_restored")
             return 0.0
+        if boss.fatigue_rounds:
+            boss.fatigue_rounds -= 1
+            self._step_exposed_boss(boss, (boss.position[0], 7), events)
+            events.append("chrono_fatigued")
+            return 0.0
         slowed = boss.slow_rounds > 0
         if slowed:
             boss.slow_rounds -= 1
         if boss.phase == "flank":
             previous = boss.position
             launch_x = 12 if self.chrono_landing_x() == 9 else 11
-            speed = 1 if slowed else 4
+            speed = 1 if slowed else 5
             delta = max(-speed, min(speed, launch_x - boss.position[0]))
             x = boss.position[0] + delta
             lane = self.rng.choice((-1, 0, 1)) if boss.moves > 1 else 0
@@ -1361,9 +1489,10 @@ class ArenaEnv:
                                             max(7, target[1] - 1)), events)
             events.append(f"chrono_slash:{target[0]}:{target[1]}")
             if self._distance(self.player.position, target) <= 1:
-                if self.player.position in self.time_anchors:
+                if self.player.position in self.time_anchors and self.player.position not in boss.anchor_cooldowns:
                     events.append("chrono_anchor_guard")
-                damage = boss.slash_damage // 2 if self.player.position in self.time_anchors else boss.slash_damage
+                damage = (boss.slash_damage // 2 if self.player.position in self.time_anchors and
+                          self.player.position not in boss.anchor_cooldowns else boss.slash_damage)
                 reward += self._damage_entity(self.player, damage, events, "chrono_slash")
             boss.leap_target = self.player.position
             boss.leap_countdown = 1
@@ -1393,9 +1522,11 @@ class ArenaEnv:
         events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:{boss.position[1]}")
         events.append(f"chrono_leap:{target[0]}:{target[1]}")
         reward = 0.0
-        if target in self.time_anchors and (occupied or boss.primed_anchor == target):
+        if (target in self.time_anchors and target not in boss.anchor_cooldowns and
+                (occupied or boss.primed_anchor == target)):
             boss.exposed_rounds = 4
-            boss.slow_rounds = 1
+            boss.fatigue_rounds = 1
+            boss.anchor_cooldowns[target] = 6
             events.extend(("chrono_anchor", "chrono_echo_replay", "boss_shield_break"))
             reward += 15
         elif occupied:
@@ -1408,7 +1539,9 @@ class ArenaEnv:
         boss.leap_target = None
         boss.primed_anchor = None
         boss.leap_countdown = 0
-        if not boss.exposed_rounds and self.rng.random() < .55:
+        if not boss.exposed_rounds and boss.moves % 4 == 0:
+            boss.fatigue_rounds = 1
+        elif not boss.exposed_rounds and self.rng.random() < .75:
             boss.phase = "slash"
             boss.slash_target = self.player.position
             events.append(f"chrono_slash_aim:{boss.slash_target[0]}:{boss.slash_target[1]}")
@@ -1447,6 +1580,14 @@ class ArenaEnv:
                            "void_warp"))
 
     def _resolve_void(self, boss: VoidAngler, events: list[str]) -> float:
+        aftershock = 0.0
+        for cell, rounds in list(boss.node_aftershock.items()):
+            if self.player.position == cell:
+                aftershock += self._damage_entity(self.player, 8, events, "void_aftershock")
+            if rounds <= 1:
+                del boss.node_aftershock[cell]
+            else:
+                boss.node_aftershock[cell] = rounds - 1
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if boss.exposed_rounds:
@@ -1454,12 +1595,13 @@ class ArenaEnv:
             if not boss.exposed_rounds:
                 boss.drained_nodes.clear()
                 events.append("boss_shield_restored")
-            return 0.0
+            return aftershock
         if boss.target is None:
             remaining = self.gravity_nodes - boss.drained_nodes
             boss.attack_kind = ("mine" if remaining and boss.attacks == 0 else
                                 "beam" if boss.attacks == 1 else
                                 "hook" if boss.attacks == 2 else
+                                "pulse" if boss.attacks >= 4 and boss.attacks % 6 == 4 else
                                 "mine" if remaining and boss.attacks % 4 == 3 else
                                 self.rng.choice(("mine", "mine", "beam", "hook")) if remaining else
                                 self.rng.choice(("beam", "hook")))
@@ -1469,16 +1611,17 @@ class ArenaEnv:
                 self._void_approach(boss, boss.target, events)
             elif boss.attack_kind == "beam":
                 self._void_retreat(boss, events)
-            else:
+            elif boss.attack_kind == "hook":
                 self._void_approach(boss, self.player.position, events)
             events.append(f"void_aim:{boss.attack_kind}:{boss.target[0]}:{boss.target[1]}")
-            return 0.0
+            return aftershock
         target = boss.target
-        reward = 0.0
+        reward = aftershock
         if boss.attack_kind == "mine":
             events.append(f"void_mine:{target[0]}:{target[1]}")
             if target in self.gravity_nodes - boss.drained_nodes and self.player.position == target:
                 boss.drained_nodes.add(target)
+                boss.node_aftershock[target] = 2
                 events.append(f"void_drain:{len(boss.drained_nodes)}")
                 reward += 15
                 if len(boss.drained_nodes) == 3:
@@ -1495,6 +1638,25 @@ class ArenaEnv:
                         self.player.position = destination
                         events.append(f"void_pull:{x}:{y}:{destination[0]}:{destination[1]}")
                         break
+        elif boss.attack_kind == "pulse":
+            events.append(f"void_pulse:{target[0]}:{target[1]}")
+            if self._distance(self.player.position, target) <= 1 and not self.player.invulnerable:
+                reward += self._damage_entity(self.player, boss.pulse_damage, events, "void_pulse")
+                x, y = self.player.position
+                options = (self.add((x, y), direction) for direction in DIRECTIONS)
+                landing = min((cell for cell in options if self.in_bounds(cell) and
+                               cell not in self.walls | self.pits | self.fires | self.spikes and
+                               not self.boss_at(cell) and not self.enemy_at(cell)),
+                              key=lambda cell: (self._distance(cell, boss.position), cell), default=None)
+                if landing and self._distance(landing, boss.position) < self._distance((x, y), boss.position):
+                    self.player.position = landing
+                    events.append(f"void_pull:{x}:{y}:{landing[0]}:{landing[1]}")
+            boss.attacks += 1
+            boss.attack_kind = "beam"
+            boss.target = self.player.position
+            self._void_retreat(boss, events)
+            events.append(f"void_aim:beam:{boss.target[0]}:{boss.target[1]}")
+            return reward
         elif boss.attack_kind == "beam":
             events.append(f"void_beam:{boss.position[0]}:{boss.position[1]}:{target[0]}:{target[1]}")
             if self._distance(self.player.position, target) <= 1:
@@ -1524,6 +1686,15 @@ class ArenaEnv:
         return reward
 
     def _resolve_iron(self, boss: IronGardener, events: list[str]) -> float:
+        spores_reward = 0.0
+        for cell, rounds in list(self.iron_spores.items()):
+            if self.player.position == cell:
+                spores_reward += self._damage_entity(self.player, 4, events, "iron_spores")
+            if rounds <= 1:
+                del self.iron_spores[cell]
+                events.append(f"iron_spores_fade:{cell[0]}:{cell[1]}")
+            else:
+                self.iron_spores[cell] = rounds - 1
         for seed, rounds in list(self.vine_seeds.items()):
             if rounds > 1 or self.player.position == seed:
                 self.vine_seeds[seed] = max(1, rounds - 1)
@@ -1543,9 +1714,10 @@ class ArenaEnv:
                 self.vine_walls.clear()
                 self.vine_seeds = {(x, 10): 2 for x in (6, 9, 12, 15)}
                 events.append("boss_shield_restored")
-            return 0.0
+            return spores_reward
         if boss.target is None:
-            boss.attack_kind = ("flame" if boss.attacks == 0 or boss.attacks % 3 == 2 else
+            boss.attack_kind = ("bloom" if boss.attacks >= 3 and boss.attacks % 4 == 3 else
+                                "flame" if boss.attacks == 0 or boss.attacks % 3 == 2 else
                                 self.rng.choice(("flame", "flame", "flame", "thorn")))
             remaining = self.root_plates - {(x, 12) for x in boss.refluxed_roots}
             boss.target = (min(remaining, key=lambda cell: (self._distance(self.player.position, cell), cell))
@@ -1554,9 +1726,9 @@ class ArenaEnv:
                                     (max(8, min(12, boss.target[0])),
                                      max(5, min(8, self.player.position[1] - 5))), events)
             events.append(f"iron_aim:{boss.attack_kind}:{boss.target[0]}:{boss.target[1]}")
-            return 0.0
+            return spores_reward
         target = boss.target
-        reward = 0.0
+        reward = spores_reward
         if boss.attack_kind == "flame":
             x = target[0]
             vine = (x, 10)
@@ -1578,6 +1750,17 @@ class ArenaEnv:
             if not (grown and self.player.position == target):
                 self.vine_seeds[vine] = 1
                 events.append(f"iron_vine_seed:{x}:10")
+        elif boss.attack_kind == "bloom":
+            events.append(f"iron_bloom:{target[0]}:{target[1]}")
+            if self._distance(self.player.position, target) <= 2:
+                reward += self._damage_entity(self.player, boss.bloom_damage, events, "iron_bloom")
+            x, y = target
+            candidates = [(x + dx, y + dy) for dx in range(-2, 3) for dy in range(-2, 3)
+                          if abs(dx) + abs(dy) == 2 and self.in_bounds((x + dx, y + dy)) and
+                          (x + dx, y + dy) not in self.walls | self.pits | self.root_plates]
+            for cell in self.rng.sample(candidates, min(4, len(candidates))):
+                self.iron_spores[cell] = 2
+                events.append(f"iron_spores:{cell[0]}:{cell[1]}")
         else:
             events.append(f"iron_thorn:{target[0]}:{target[1]}")
             if self._distance(self.player.position, target) <= 1:
@@ -1615,6 +1798,13 @@ class ArenaEnv:
         return {(cx + dx, cy + dy) for cx, cy in (target, other)
                 for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))
                 if self.in_bounds((cx + dx, cy + dy))}
+
+    def mirror_rush_cells(self) -> set[tuple[int, int]]:
+        if not isinstance(self.boss, MirrorSeraph) or self.boss.rush_target is None:
+            return set()
+        x, y = self.boss.rush_target
+        return {(x + dx, y + dy) for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))
+                if self.in_bounds((x + dx, y + dy))}
 
     def _mirror_clone_cell(self, index: int, player_position: tuple[int, int] | None = None) -> tuple[int, int]:
         x, y = player_position or self.player.position
@@ -1684,7 +1874,28 @@ class ArenaEnv:
                 self._spawn_mirror_clones(boss, events)
                 events.append("boss_shield_restored")
             return reward
+        if boss.rush_target is not None:
+            target = boss.rush_target
+            danger = self.mirror_rush_cells()
+            previous = boss.position
+            for cell in ray_cells(previous, target):
+                if cell in self.walls | self.pits | self.mirror_locks or not self.in_bounds(cell):
+                    break
+                if cell != self.player.position:
+                    boss.position = cell
+            events.append(f"mirror_rush:{target[0]}:{target[1]}")
+            if boss.position != previous:
+                events.append(f"boss_move:{previous[0]}:{previous[1]}:{boss.position[0]}:{boss.position[1]}")
+            if self.player.position in danger and self._distance(boss.position, self.player.position) <= 1:
+                reward += self._damage_entity(self.player, boss.rush_damage, events, "mirror_rush")
+            boss.rush_target = None
+            return reward
         if boss.copied_action is None:
+            if boss.copies >= 3 * (boss.rushes + 1):
+                boss.rush_target = self.player.position
+                boss.rushes += 1
+                events.append(f"mirror_rush_aim:{boss.rush_target[0]}:{boss.rush_target[1]}")
+                return reward
             action = self.last_non_wait_action or "move_n"
             boss.copied_action = action
             direction = action[-1] if action[-1] in "nsew" else None
@@ -1731,6 +1942,7 @@ class ArenaEnv:
                 reward += self._damage_entity(self.player, boss.echo_damage, events, "mirror_echo")
         boss.copied_action = boss.mirrored_direction = boss.target = None
         boss.echo_target = None
+        boss.copies += 1
         return reward
 
     def rail_path(self) -> tuple[tuple[int, int], ...]:
@@ -1757,12 +1969,26 @@ class ArenaEnv:
         cover = self.rail_cover()
         return cover is None or (position[1] < cover[1] if boss.rail_axis == "v" else position[0] < cover[0])
 
-    def siege_blast_cells(self) -> set[tuple[int, int]]:
+    def siege_blast_cells(self, target: tuple[int, int] | None = None,
+                         kind: str | None = None) -> set[tuple[int, int]]:
         boss = self.boss
-        if not isinstance(boss, SiegeLeviathan) or boss.blast_target is None:
+        if not isinstance(boss, SiegeLeviathan):
             return set()
-        x, y = boss.blast_target
-        radius = 2 if boss.blast_kind == "cross" else 1
+        if target is None and boss.blast_target is not None and boss.blast_cells:
+            return set(boss.blast_cells)
+        target = target or boss.blast_target
+        if target is None:
+            return set()
+        kind = kind or boss.blast_kind
+        x, y = target
+        if kind == "shrapnel":
+            ring = {(x + dx, y + dy) for dx in range(-2, 3) for dy in range(-2, 3)
+                    if max(abs(dx), abs(dy)) == 2 and self.in_bounds((x + dx, y + dy))}
+            reflected = {self.add(cover, direction) for cover in self.rail_covers.values()
+                         if cover in ring for direction in DIRECTIONS}
+            return ring | {cell for cell in reflected if self.in_bounds(cell) and
+                           cell not in self.walls | self.pits}
+        radius = 2 if kind == "cross" else 1
         return {(x + offset, y) for offset in range(-radius, radius + 1)
                 if self.in_bounds((x + offset, y))} | {
                 (x, y + offset) for offset in range(-radius, radius + 1)
@@ -1801,12 +2027,12 @@ class ArenaEnv:
             boss.blast_target = None
             events.append(f"siege_blast:{kind}:{target[0]}:{target[1]}")
             if self.player.position in cells:
-                reward += self._damage_entity(self.player, 22 if kind == "cross" else 28,
+                reward += self._damage_entity(self.player, {"cross": 22, "pit": 28, "shrapnel": 18}[kind],
                                               events, "siege_blast")
             for origin, cover in list(self.rail_covers.items()):
                 if cover in cells:
                     del self.rail_covers[origin]
-                    self.rail_rebuilds[origin] = 3
+                    self.rail_rebuilds[origin] = 7
                     events.append(f"rail_cover_break:{cover[0]}:{cover[1]}")
             if kind == "pit":
                 forbidden = (self.walls | self.pits | self.rail_locks | self.medkits |
@@ -1833,7 +2059,7 @@ class ArenaEnv:
             for origin, cover in list(self.rail_covers.items()):
                 if cover in path:
                     del self.rail_covers[origin]
-                    self.rail_rebuilds[origin] = 3
+                    self.rail_rebuilds[origin] = 7
                     events.append(f"rail_cover_break:{cover[0]}:{cover[1]}")
                     lock = (cover[0], 7)
                     if cover != origin and lock in self.rail_locks - boss.broken_locks:
@@ -1879,7 +2105,7 @@ class ArenaEnv:
         if cover:
             origin = next(origin for origin, position in self.rail_covers.items() if position == cover)
             del self.rail_covers[origin]
-            self.rail_rebuilds[origin] = 2
+            self.rail_rebuilds[origin] = 7
             events.append(f"rail_cover_break:{cover[0]}:{cover[1]}")
             lock = (target, 7)
             if axis == "v" and lock in self.rail_locks and lock not in boss.broken_locks:
@@ -1892,8 +2118,10 @@ class ArenaEnv:
         boss.shots += 1
         boss.rail_target = None
         if boss.shots % 2 == 0:
+            boss.blasts += 1
             boss.blast_target = self.player.position
-            boss.blast_kind = "pit" if boss.shots % 4 == 0 else "cross"
+            boss.blast_kind = ("shrapnel", "pit", "cross")[(boss.blasts - 1) % 3]
+            boss.blast_cells = self.siege_blast_cells(boss.blast_target, boss.blast_kind)
             events.append(f"siege_blast_aim:{boss.blast_kind}:{boss.blast_target[0]}:{boss.blast_target[1]}")
         for origin, position in list(self.rail_covers.items()):
             x = ((7 + boss.shots % 2) if origin[0] == 7 else
@@ -1906,17 +2134,14 @@ class ArenaEnv:
         return reward
 
     def _resolve_null(self, boss: NullWeaver, events: list[str]) -> float:
-        if self.null_void:
-            self.null_void.clear()
-            events.append("null_floor_restore")
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
             if boss.exposed_rounds and boss.exposed_rounds % 2:
                 anchors = ((8, 5), (12, 5), (8, 7), (12, 7), (9, 10), (12, 10))
-                destination = max((cell for cell in anchors if cell != self.player.position and
-                                   cell not in self.walls | self.pits),
-                                  key=lambda cell: (self._distance(cell, self.player.position), cell),
-                                  default=boss.position)
+                choices = sorted((cell for cell in anchors if cell != self.player.position and
+                                  cell not in self.walls | self.pits | self.null_void),
+                                 key=lambda cell: self._distance(cell, self.player.position), reverse=True)
+                destination = self.rng.choice(choices[:3]) if choices else boss.position
                 if destination != boss.position:
                     previous = boss.position
                     boss.position = destination
@@ -1940,8 +2165,10 @@ class ArenaEnv:
                                "null_warp"))
         elif boss.cycles % 2 == 0:
             anchors = ((8, 5), (12, 5), (8, 7), (12, 7), (9, 10), (12, 10))
-            choices = (cell for cell in anchors if cell != boss.position and cell != self.player.position)
-            boss.warp_target = min(choices, key=lambda cell: (self._distance(cell, self.player.position), cell))
+            choices = sorted((cell for cell in anchors if cell != boss.position and
+                              cell != self.player.position and cell not in self.null_void),
+                             key=lambda cell: self._distance(cell, self.player.position))
+            boss.warp_target = self.rng.choice(choices[:3]) if choices else boss.position
             events.append(f"null_warp_aim:{boss.warp_target[0]}:{boss.warp_target[1]}")
         boss.blocked_kind = ("move", "melee", "ranged", "skill")[boss.cycles % 4]
         boss.cycles += 1
@@ -1951,10 +2178,32 @@ class ArenaEnv:
             occupied = (self.walls | self.pits | set(self.null_nodes) | self.medkits |
                         self.energy_cells | self.bow_pickups | self.pistol_pickups |
                         self.arrow_bundles | self.barrels)
-            boss.erase_targets = {(x + dx, y) for dx in range(-2, 3)
-                                  if self.in_bounds((x + dx, y)) and (x + dx, y) not in occupied}
-            boss.erase_targets |= {(x, y + dy) for dy in (-1, 1)
-                                   if self.in_bounds((x, y + dy)) and (x, y + dy) not in occupied}
+            boss.fracture_axis = self.rng.choice(("h", "v"))
+            offsets = ({(dx, dy) for dx in range(-3, 4) for dy in (-1, 0, 1)
+                        if dy == 0 or abs(dx) <= 1} if boss.fracture_axis == "h" else
+                       {(dx, dy) for dy in range(-3, 4) for dx in (-1, 0, 1)
+                        if dx == 0 or abs(dy) <= 1})
+            boss.erase_targets = {(x + dx, y + dy) for dx, dy in offsets
+                                  if self.in_bounds((x + dx, y + dy)) and
+                                  (x + dx, y + dy) not in occupied}
+            escapes = [self.add(self.player.position, direction) for direction in DIRECTIONS
+                       if self.in_bounds(self.add(self.player.position, direction)) and
+                       self.add(self.player.position, direction) not in self.walls | self.pits and
+                       not self.boss_at(self.add(self.player.position, direction))]
+            if escapes:
+                boss.erase_targets.discard(self.rng.choice(escapes))
+            candidates = sorted(boss.erase_targets - self.null_void - {self.player.position})
+            self.rng.shuffle(candidates)
+            boss.fracture_cells.clear()
+            for cell in candidates:
+                if len(boss.fracture_cells) >= 2 or len(self.null_void) >= 4:
+                    break
+                self.null_void.add(cell)
+                if set(self.null_nodes) <= self._reachable_cells():
+                    boss.fracture_cells.add(cell)
+                else:
+                    self.null_void.remove(cell)
+            self.null_void.difference_update(boss.fracture_cells)
             boss.erase_countdown = 2
             events.append(f"null_mark:{y}:2")
             return 0.0
@@ -1962,10 +2211,12 @@ class ArenaEnv:
         if boss.erase_countdown:
             events.append(f"null_countdown:{boss.erase_countdown}")
             return 0.0
-        self.null_void = set(boss.erase_targets)
+        self.null_void.update(boss.fracture_cells)
+        boss.fracture_cells.clear()
+        hit_cells = set(boss.erase_targets)
         boss.erase_targets.clear()
         reward = 0.0
-        if self.player.position in self.null_void:
+        if self.player.position in hit_cells:
             reward += self._damage_entity(self.player, boss.fracture_damage, events, "null_fracture")
             safe = [self.add(self.player.position, direction) for direction in DIRECTIONS
                     if self.in_bounds(self.add(self.player.position, direction)) and
@@ -2004,6 +2255,16 @@ class ArenaEnv:
                 events.append(f"boss_move:{x}:{y}:{destination[0]}:{destination[1]}")
                 break
 
+    def _apex_barrage_cells(self, phase: int, forced_safe: tuple[int, int] | None = None,
+                            forced_danger: tuple[int, int] | None = None) -> set[tuple[int, int]]:
+        cells = {(x, y) for y in range(5, 18) for x in range(2, 18)
+                 if (x + 2 * y + phase) % 3 != 0 and (x, y) not in self.walls | self.pits}
+        if forced_safe is not None:
+            cells.discard(forced_safe)
+        if forced_danger is not None and forced_danger not in self.walls | self.pits:
+            cells.add(forced_danger)
+        return cells
+
     def _resolve_apex(self, boss: ApexArbiter, events: list[str]) -> float:
         if boss.exposed_rounds:
             boss.exposed_rounds -= 1
@@ -2018,6 +2279,8 @@ class ArenaEnv:
                          if boss.seals < 4 else ("cage_barrage", "charge_gravity", "verdict")[boss.finale_cycles % 3])
             boss.target = self.player.position
             boss.gate_broken = False
+            boss.barrage_cells.clear()
+            boss.barrage_volley = 0
             boss.appeal = None
             boss.appeal_ready = False
             if boss.kind in ("cage", "cage_barrage"):
@@ -2028,14 +2291,17 @@ class ArenaEnv:
                                   not self.boss_at(self.add(boss.target, d))), None)
                 boss.danger = {boss.target}
                 if boss.kind == "cage_barrage" and boss.gate:
-                    safe_column = boss.gate[0] % 3
-                    boss.danger |= {(x, y) for y in range(5, 18) for x in range(2, 18)
-                                    if x % 3 != safe_column and (x, y) not in self.walls | self.pits}
+                    boss.barrage_phase = self.rng.randrange(3)
+                    boss.barrage_volley = 1
+                    boss.barrage_cells = self._apex_barrage_cells(boss.barrage_phase, boss.gate)
+                    boss.danger |= boss.barrage_cells
                 boss.countdown = 2
             elif boss.kind == "barrage":
-                safe_column = 0 if boss.seals < 4 else (boss.finale_cycles // 2 + 1) % 3
-                boss.danger = {(x, y) for y in range(5, 18) for x in range(2, 18)
-                               if x % 3 != safe_column and (x, y) not in self.walls | self.pits}
+                boss.barrage_phase = self.rng.randrange(3)
+                boss.barrage_volley = 1
+                boss.barrage_cells = self._apex_barrage_cells(
+                    boss.barrage_phase, self.apex_seals[1] if boss.seals == 1 else None)
+                boss.danger = set(boss.barrage_cells)
                 boss.countdown = 1
             elif boss.kind in ("charge", "charge_gravity"):
                 boss.danger = set(self._apex_charge_path(boss, boss.target))
@@ -2084,6 +2350,15 @@ class ArenaEnv:
             events.append(f"apex_charge:{boss.kind}:1")
             return 0.0
         reward = 0.0
+        barrage_special_safe = (self.apex_seals[1] if boss.kind == "barrage" and
+                                boss.barrage_volley == 1 and boss.seals == 1 else
+                                boss.gate if boss.kind == "cage_barrage" else None)
+        if boss.barrage_volley:
+            boss.fired_barrage_cells = set(boss.barrage_cells)
+            boss.fired_barrage_volley = boss.barrage_volley
+        else:
+            boss.fired_barrage_cells.clear()
+            boss.fired_barrage_volley = 0
         if boss.kind == "cage":
             if not boss.gate_broken and self.player.position in boss.danger:
                 reward += self._damage_entity(self.player, 26, events, "apex_cage")
@@ -2111,10 +2386,8 @@ class ArenaEnv:
                 boss.seals += 1
                 events.append("apex_seal:4")
         elif boss.kind == "cage_barrage":
-            safe_column = boss.gate[0] % 3 if boss.gate else boss.target[0] % 3
             cage_hit = not boss.gate_broken and self.player.position == boss.target
-            barrage_hit = (self.player.position[0] % 3 != safe_column and
-                           5 <= self.player.position[1] < 18)
+            barrage_hit = self.player.position in boss.barrage_cells
             if cage_hit or barrage_hit:
                 reward += self._damage_entity(self.player, min(36, 26 * cage_hit + 16 * barrage_hit),
                                               events, "apex_cage_barrage")
@@ -2131,11 +2404,10 @@ class ArenaEnv:
                 events.append("apex_appeal")
             elif self.player.position in boss.danger:
                 reward += self._damage_entity(self.player, 36, events, "apex_verdict")
-        safe_column = (boss.gate[0] % 3 if boss.gate else boss.target[0] % 3)
         charge_path = (self._apex_charge_path(boss, boss.target)
                        if boss.kind in ("charge", "charge_gravity") else ())
         endpoint = charge_path[-1] if charge_path else (boss.position if boss.kind in ("charge", "charge_gravity") else boss.target)
-        events.append(f"apex_fire:{boss.kind}:{boss.target[0]}:{boss.target[1]}:{safe_column}:{endpoint[0]}:{endpoint[1]}")
+        events.append(f"apex_fire:{boss.kind}:{boss.target[0]}:{boss.target[1]}:0:{endpoint[0]}:{endpoint[1]}")
         if charge_path:
             # Rush along the warned trace, stopping short of the player or a
             # reflecting seal. The new position persists after the animation.
@@ -2162,8 +2434,29 @@ class ArenaEnv:
                     boss.finale_cycles += 1
                 boss.exposed_rounds = 6
                 events.append("boss_shield_break")
-            else:
+            elif boss.barrage_volley != 2:
                 boss.finale_cycles += 1
+        if boss.barrage_volley == 1:
+            boss.barrage_phase = (boss.barrage_phase + 1) % 3
+            boss.barrage_cells = self._apex_barrage_cells(boss.barrage_phase,
+                                                           forced_danger=barrage_special_safe)
+            if self.player.position in boss.barrage_cells:
+                neighbors = [self.add(self.player.position, direction) for direction in DIRECTIONS
+                             if self.in_bounds(self.add(self.player.position, direction)) and
+                             self.add(self.player.position, direction) not in self.walls | self.pits |
+                             self.barrels and not self.boss_at(self.add(self.player.position, direction))]
+                if not any(cell not in boss.barrage_cells for cell in neighbors) and neighbors:
+                    escape = next((cell for cell in neighbors if cell in boss.fired_barrage_cells),
+                                  neighbors[0])
+                    boss.barrage_cells.discard(escape)
+            boss.danger = set(boss.barrage_cells)
+            boss.kind = "barrage"
+            boss.target = self.player.position
+            boss.countdown = 1
+            boss.barrage_volley = 2
+            events.append("apex_barrage_second_aim")
+        else:
+            boss.barrage_volley = 0
         return reward
 
     def _push_entity(self, enemy: Enemy, direction: str, events: list[str]) -> float:
@@ -2463,23 +2756,32 @@ class ArenaEnv:
         position = position or self.player.position
         threats: list[tuple[str, int]] = []
         if isinstance(self.boss, PrismWarden) and self.boss.target:
-            path = self.boss_ray()
-            if path and path[-1] not in self.walls | self.reflectors and position in self.prism_attack_cells():
+            rays = self.prism_rays()
+            if any(position in ray for ray in rays[1:]) or (
+                    rays[0] and rays[0][-1] not in self.walls | self.reflectors and
+                    position in self.prism_attack_cells()):
                 threats.append(("prism_warden/beam", self.boss.beam_damage))
         if isinstance(self.boss, PrismWarden) and self.boss.lunge_target and self._distance(position, self.boss.lunge_target) <= 1:
             threats.append(("prism_warden/lunge", self.boss.lunge_damage))
         if isinstance(self.boss, FurnaceHydra) and self.boss.target:
-            if self.boss.attack_kind == "wave" and 8 <= position[1] <= 16:
+            if self.boss.attack_kind in ("wave", "triple") and 8 <= position[1] <= 16:
                 columns = self.boss.wave_columns or ((self.boss.head_x - 1, self.boss.head_x,
                                                       self.boss.head_x + 1)
                                                      if self.boss.hp <= self.boss.max_hp // 2 else
                                                      (self.boss.head_x,))
-                if (position[0] in columns and
-                        (position != (self.boss.head_x, 12) or self.boss.wave_rapid)):
-                    damage = self.boss.wave_damage if position[0] == self.boss.head_x else 12
+                safe_valve = (position in self.coolant_valves and
+                              position[0] not in self.boss.valves_opened and
+                              not self.boss.wave_rapid and
+                              (self.boss.attack_kind == "triple" or position[0] == self.boss.head_x))
+                if position[0] in columns and not safe_valve:
+                    damage = (self.boss.wave_damage if self.boss.attack_kind == "triple" or
+                              position[0] == self.boss.head_x else 12)
                     threats.append(("furnace_hydra/wave", damage))
             elif self.boss.attack_kind == "fireball" and self._distance(position, self.boss.target) <= 1:
                 threats.append(("furnace_hydra/fireball", self.boss.fireball_damage))
+        if (isinstance(self.boss, FurnaceHydra) and position in self.coolant_valves and
+                position[0] in self.boss.valve_heat and self.boss.valve_heat[position[0]] <= 1):
+            threats.append(("furnace_hydra/valve_heat", 10))
         if isinstance(self.boss, StormChoir) and self.boss.target:
             if self.boss.attack_kind == "chain":
                 chain = self.storm_chain()
@@ -2493,14 +2795,19 @@ class ArenaEnv:
         if isinstance(self.boss, StormChoir) and self.boss.net_target:
             if self._distance(position, self.boss.net_target) <= 1:
                 threats.append(("storm_choir/net", self.boss.net_damage))
+        if isinstance(self.boss, StormChoir) and self.boss.overdrive_rounds:
+            if self._distance(position, self.boss.position) <= 5:
+                threats.append(("storm_choir/overdrive", self.boss.overdrive_damage))
         if isinstance(self.boss, ChronoMantis):
             if (self.boss.phase == "slash" and
                     self._distance(position, self.boss.slash_target) <= 1):
-                damage = (self.boss.slash_damage // 2 if position in self.time_anchors else
+                damage = (self.boss.slash_damage // 2 if position in self.time_anchors and
+                          position not in self.boss.anchor_cooldowns else
                           self.boss.slash_damage)
                 threats.append(("chrono_mantis/slash", damage))
             if self.boss.phase == "leap":
-                if position == self.boss.leap_target and position not in self.time_anchors:
+                if (position == self.boss.leap_target and
+                        (position not in self.time_anchors or position in self.boss.anchor_cooldowns)):
                     threats.append(("chrono_mantis/leap", self.boss.leap_damage))
                 elif position == self.boss.slash_target and position != self.boss.leap_target:
                     threats.append(("chrono_mantis/echo", self.boss.echo_damage))
@@ -2514,12 +2821,21 @@ class ArenaEnv:
         if isinstance(self.boss, VoidAngler) and self.boss.attack_kind == "hook" and self.boss.target:
             if self._distance(position, self.boss.target) <= 1:
                 threats.append(("void_angler/hook", self.boss.hook_damage))
+        if isinstance(self.boss, VoidAngler) and self.boss.attack_kind == "pulse" and self.boss.target:
+            if self._distance(position, self.boss.target) <= 1:
+                threats.append(("void_angler/pulse", self.boss.pulse_damage))
+        if isinstance(self.boss, VoidAngler) and position in self.boss.node_aftershock:
+            threats.append(("void_angler/aftershock", 8))
         if isinstance(self.boss, IronGardener) and self.boss.target:
             if self.boss.attack_kind == "flame" and position[0] == self.boss.target[0] and 8 <= position[1] <= 16:
                 if not (position == self.boss.target and self.iron_root_ready(position[0])):
                     threats.append(("iron_gardener/flame", self.boss.flame_damage))
+            elif self.boss.attack_kind == "bloom" and self._distance(position, self.boss.target) <= 2:
+                threats.append(("iron_gardener/bloom", self.boss.bloom_damage))
             elif self.boss.attack_kind == "thorn" and self._distance(position, self.boss.target) <= 1:
                 threats.append(("iron_gardener/thorn", self.boss.thorn_damage))
+        if isinstance(self.boss, IronGardener) and position in self.iron_spores:
+            threats.append(("iron_gardener/spores", 4))
         if (isinstance(self.boss, MirrorSeraph) and self.boss.copied_action and
                 any(self._distance(position, cell) <= 1 for cell in self.mirror_ray())):
             path = self.mirror_ray()
@@ -2530,6 +2846,8 @@ class ArenaEnv:
         if (isinstance(self.boss, MirrorSeraph) and
                 position in self.mirror_echo_cells()):
             threats.append(("mirror_seraph/echo", self.boss.echo_damage))
+        if isinstance(self.boss, MirrorSeraph) and position in self.mirror_rush_cells():
+            threats.append(("mirror_seraph/rush", self.boss.rush_damage))
         if isinstance(self.boss, MirrorSeraph):
             clones = sum(1 for enemy in self.enemies if enemy.summoned_by and
                          enemy.summoned_by.startswith("mirror_") and
@@ -2540,7 +2858,7 @@ class ArenaEnv:
             if self.rail_threatens(position):
                 threats.append(("siege_leviathan/railgun", self.boss.rail_damage))
         if isinstance(self.boss, SiegeLeviathan) and position in self.siege_blast_cells():
-            threats.append(("siege_leviathan/blast", 22 if self.boss.blast_kind == "cross" else 28))
+            threats.append(("siege_leviathan/blast", {"cross": 22, "pit": 28, "shrapnel": 18}[self.boss.blast_kind]))
         if isinstance(self.boss, SiegeLeviathan) and position in self.siege_charge_path():
             threats.append(("siege_leviathan/charge", 28))
         if isinstance(self.boss, NullWeaver) and self.boss.erase_countdown == 1:
@@ -2552,8 +2870,7 @@ class ArenaEnv:
                          "cage_barrage": 36, "charge_gravity": 36, "verdict": 36}[self.boss.kind]
                 if not (self.boss.kind == "cage" and self.boss.gate_broken or
                         self.boss.kind == "cage_barrage" and self.boss.gate_broken and
-                        self.boss.gate is not None and
-                        position[0] % 3 == self.boss.gate[0] % 3 or
+                        position not in self.boss.barrage_cells or
                         self.boss.kind == "charge" and self.apex_seals[2] in self.boss.danger or
                         self.boss.kind == "gravity" and position == self.apex_seals[3]):
                     threats.append((f"apex_arbiter/{self.boss.kind}", power))
@@ -2614,23 +2931,30 @@ class ArenaEnv:
             "boss": (("prism", self.boss.position, self.boss.hp, self.boss.reflections,
                       tuple(sorted(self.boss.used_reflectors)), self.boss.shots_fired,
                       self.boss.exposed_rounds, self.boss.target, self.boss.lunge_target,
-                      self.boss.returning, self.boss.reflector_regen) if isinstance(self.boss, PrismWarden) else
+                      self.boss.returning, tuple(sorted(self.boss.reflector_cooldowns.items())),
+                      self.boss.reflector_lockout,
+                      self.boss.spin_step) if isinstance(self.boss, PrismWarden) else
                      ("furnace", self.boss.position, self.boss.hp, tuple(sorted(self.boss.valves_opened)),
+                      tuple(sorted(self.boss.valve_heat.items())),
                       self.boss.exposed_rounds, self.boss.attack_kind, self.boss.target,
                       self.boss.attacks, self.boss.summons, self.boss.wave_columns,
                       self.boss.wave_rapid, self.boss.combo_queued,
                       self.boss.non_wave_streak) if isinstance(self.boss, FurnaceHydra) else
                      ("storm", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.attack_kind, self.boss.target, self.boss.attacks,
-                      self.boss.net_target, self.boss.last_ground_pad) if isinstance(self.boss, StormChoir) else
+                      self.boss.net_target, self.boss.last_ground_pad,
+                      self.boss.overdrive_rounds, self.boss.fatigue_rounds,
+                      self.boss.next_overdrive_attack) if isinstance(self.boss, StormChoir) else
                      ("chrono", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.phase, self.boss.slash_target, self.boss.leap_target,
                       self.boss.retreat_target, self.boss.primed_anchor,
                       self.boss.leap_countdown, self.boss.moves,
-                      self.boss.slow_rounds) if isinstance(self.boss, ChronoMantis) else
+                      self.boss.slow_rounds, self.boss.fatigue_rounds,
+                      tuple(sorted(self.boss.anchor_cooldowns.items()))) if isinstance(self.boss, ChronoMantis) else
                      ("void", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.drained_nodes)), self.boss.attack_kind,
-                      self.boss.target, self.boss.attacks) if isinstance(self.boss, VoidAngler) else
+                      self.boss.target, self.boss.attacks,
+                      tuple(sorted(self.boss.node_aftershock.items()))) if isinstance(self.boss, VoidAngler) else
                      ("iron", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.refluxed_roots)), self.boss.attack_kind,
                       self.boss.target, self.boss.attacks, self.boss.summons) if isinstance(self.boss, IronGardener) else
@@ -2638,19 +2962,27 @@ class ArenaEnv:
                       tuple(sorted(self.boss.broken_locks)), self.boss.copied_action,
                       self.boss.mirrored_direction, self.boss.target,
                       self.boss.echo_target, self.boss.evade_ready, self.boss.evaded,
-                      self.boss.emp_jammed, self.boss.clones_spawned) if isinstance(self.boss, MirrorSeraph) else
+                      self.boss.emp_jammed, self.boss.clones_spawned,
+                      self.boss.copies, self.boss.rushes, self.boss.rush_target) if isinstance(self.boss, MirrorSeraph) else
                      ("siege", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       tuple(sorted(self.boss.broken_locks)), self.boss.rail_axis,
                       self.boss.rail_target, self.boss.charge, self.boss.shots,
+                      self.boss.blasts,
                       self.boss.blast_target, self.boss.blast_kind,
+                      tuple(sorted(self.boss.blast_cells)),
                       self.boss.charge_target) if isinstance(self.boss, SiegeLeviathan) else
                      ("null", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.node_index, self.boss.blocked_kind,
                       tuple(sorted(self.boss.erase_targets)), self.boss.erase_countdown,
-                      self.boss.cycles, self.boss.warp_target) if isinstance(self.boss, NullWeaver) else
+                      self.boss.cycles, self.boss.warp_target,
+                      self.boss.fracture_axis,
+                      tuple(sorted(self.boss.fracture_cells))) if isinstance(self.boss, NullWeaver) else
                      ("apex", self.boss.position, self.boss.hp, self.boss.exposed_rounds,
                       self.boss.seals, self.boss.kind, self.boss.target, self.boss.countdown,
-                      tuple(sorted(self.boss.danger)), self.boss.gate, self.boss.gate_broken,
+                      tuple(sorted(self.boss.danger)), tuple(sorted(self.boss.barrage_cells)),
+                      self.boss.barrage_phase, self.boss.barrage_volley,
+                      tuple(sorted(self.boss.fired_barrage_cells)), self.boss.fired_barrage_volley,
+                      self.boss.gate, self.boss.gate_broken,
                        self.boss.finale_cycles, self.boss.appeal,
                        self.boss.appeal_ready) if self.boss else None),
             "reflectors": tuple(sorted(self.reflectors)),
@@ -2667,6 +2999,8 @@ class ArenaEnv:
             "siege_pits": tuple(sorted(self.siege_pits.items())),
             "null_nodes": self.null_nodes,
             "null_void": tuple(sorted(self.null_void)),
+            "iron_spores": tuple(sorted(self.iron_spores.items())),
+            "apex_fast_volley_resolved": self.apex_fast_volley_resolved,
             "apex_seals": self.apex_seals,
             "apex_cage": tuple(sorted(self.apex_cage)),
             "vine_seeds": tuple(sorted(self.vine_seeds.items())),

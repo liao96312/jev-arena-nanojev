@@ -8,6 +8,8 @@ class PrismWarden:
     max_hp: int = 168
     reflections: int = 0
     used_reflectors: set[tuple[int, int]] = field(default_factory=set)
+    reflector_cooldowns: dict[tuple[int, int], int] = field(default_factory=dict)
+    reflector_lockout: int = 0
     exposed_rounds: int = 0
     target: tuple[int, int] | None = None
     lunge_target: tuple[int, int] | None = None
@@ -15,9 +17,9 @@ class PrismWarden:
     lunge_used: bool = False
     shots_fired: int = 0
     sweep: bool = False
-    reflector_regen: int = 0
     beam_damage: int = 14
     lunge_damage: int = 24
+    spin_step: int = 0
 
 
 @dataclass
@@ -27,6 +29,7 @@ class FurnaceHydra:
     max_hp: int = 120
     exposed_rounds: int = 0
     valves_opened: set[int] = field(default_factory=set)
+    valve_heat: dict[int, int] = field(default_factory=dict)
     target: tuple[int, int] | None = None
     attack_kind: str = "wave"
     head_x: int = 10
@@ -49,11 +52,15 @@ class StormChoir:
     target: tuple[int, int] | None = None
     attack_kind: str = "chain"
     attacks: int = 0
+    next_overdrive_attack: int = 2
     arc_damage: int = 14
     surge_damage: int = 26
     net_target: tuple[int, int] | None = None
     net_damage: int = 12
     last_ground_pad: tuple[int, int] | None = None
+    overdrive_rounds: int = 0
+    fatigue_rounds: int = 0
+    overdrive_damage: int = 8
 
 
 @dataclass
@@ -73,6 +80,8 @@ class ChronoMantis:
     echo_damage: int = 18
     leap_damage: int = 30
     slow_rounds: int = 0
+    fatigue_rounds: int = 0
+    anchor_cooldowns: dict[tuple[int, int], int] = field(default_factory=dict)
 
 
 @dataclass
@@ -87,6 +96,8 @@ class VoidAngler:
     attacks: int = 0
     beam_damage: int = 22
     hook_damage: int = 18
+    pulse_damage: int = 8
+    node_aftershock: dict[tuple[int, int], int] = field(default_factory=dict)
 
 
 @dataclass
@@ -102,6 +113,7 @@ class IronGardener:
     summons: int = 0
     flame_damage: int = 22
     thorn_damage: int = 18
+    bloom_damage: int = 16
 
 
 @dataclass
@@ -123,6 +135,10 @@ class MirrorSeraph:
     evaded: bool = False
     emp_jammed: bool = False
     clones_spawned: bool = False
+    copies: int = 0
+    rushes: int = 0
+    rush_target: tuple[int, int] | None = None
+    rush_damage: int = 18
 
 
 @dataclass
@@ -136,9 +152,11 @@ class SiegeLeviathan:
     rail_target: int | None = None
     charge: int = 0
     shots: int = 0
+    blasts: int = 0
     rail_damage: int = 36
     blast_target: tuple[int, int] | None = None
     blast_kind: str = "cross"
+    blast_cells: set[tuple[int, int]] = field(default_factory=set)
     charge_target: tuple[int, int] | None = None
 
 
@@ -155,6 +173,8 @@ class NullWeaver:
     cycles: int = 0
     fracture_damage: int = 20
     warp_target: tuple[int, int] | None = None
+    fracture_axis: str = "h"
+    fracture_cells: set[tuple[int, int]] = field(default_factory=set)
 
 
 @dataclass
@@ -168,6 +188,11 @@ class ApexArbiter:
     countdown: int = 0
     target: tuple[int, int] | None = None
     danger: set[tuple[int, int]] = field(default_factory=set)
+    barrage_cells: set[tuple[int, int]] = field(default_factory=set)
+    barrage_phase: int = 0
+    barrage_volley: int = 0
+    fired_barrage_cells: set[tuple[int, int]] = field(default_factory=set)
+    fired_barrage_volley: int = 0
     gate: tuple[int, int] | None = None
     gate_broken: bool = False
     finale_cycles: int = 0

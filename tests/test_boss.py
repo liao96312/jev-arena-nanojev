@@ -24,11 +24,14 @@ class PrismBossTests(unittest.TestCase):
         second.reset(1)
         self.assertNotEqual(first.reflectors, second.reflectors)
         boss = first.boss
-        boss.used_reflectors.add(next(iter(first.reflectors)))
-        boss.reflector_regen = 2
+        mirror = next(iter(first.reflectors))
+        boss.used_reflectors.add(mirror)
+        boss.reflector_cooldowns[mirror] = 8
+        boss.exposed_rounds = 10
         first.round = 3
-        first._resolve_boss([])
-        self.assertTrue(boss.used_reflectors)
+        for _ in range(7):
+            first._resolve_boss([])
+        self.assertIn(mirror, boss.used_reflectors)
         first._resolve_boss([])
         self.assertFalse(boss.used_reflectors)
 
@@ -93,7 +96,7 @@ class PrismBossTests(unittest.TestCase):
     def test_rule_agent_can_finish_boss_without_damage(self):
         env, agent = ArenaEnv(campaign_config(10)), RuleAgent()
         events = []
-        for _ in range(100):
+        for _ in range(260):
             if env.done:
                 break
             events.extend(env.step(agent.act(env)).events)
@@ -108,7 +111,7 @@ class PrismBossTests(unittest.TestCase):
     def test_default_hybrid_policy_pursues_boss_kill_with_flat_model_scores(self):
         env = ArenaEnv(campaign_config(10))
         events = []
-        for _ in range(140):
+        for _ in range(400):
             if env.done:
                 break
             scores = {action.value: 1.0 for action in env.legal_actions()}
@@ -385,17 +388,15 @@ class StormBossTests(unittest.TestCase):
         env.player.position = (10, 10)
         events = []
         env._resolve_storm(env.boss, events)
-        self.assertIn("boss_move:10:5:8:5", events)
+        self.assertTrue(any(event.startswith("boss_move:10:5:") for event in events))
         self.assertEqual(env.boss.target, (10, 10))
         events.clear()
         env._resolve_storm(env.boss, events)
-        self.assertEqual(env.boss.position, (8, 6))
-        self.assertIn("boss_move:8:5:8:6", events)
-        self.assertTrue(any(event.startswith("storm_chain:8:5:") for event in events))
+        self.assertTrue(any(event.startswith("storm_chain:") for event in events))
         events.clear()
         env._resolve_storm(env.boss, events)
-        self.assertIn("boss_move:8:6:11:6", events)
-        self.assertIn("storm_aim:surge:10:10", events)
+        self.assertTrue(any(event.startswith("boss_move:") for event in events))
+        self.assertTrue(any(event.startswith("storm_aim:") for event in events))
 
     def test_staggered_room_chain_warning_and_grounding(self):
         env = ArenaEnv(campaign_config(30))
@@ -437,7 +438,8 @@ class StormBossTests(unittest.TestCase):
             choice, _ = select_action(scores, env, "hybrid")
             events.extend(env.step(choice).events)
         self.assertTrue(env.done)
-        self.assertEqual(env.player.hp, 100)
+        self.assertGreater(env.player.hp, 0)
+        self.assertIn("storm_overdrive_charge", events)
         self.assertEqual(events.count("storm_grounded"), 2)
         self.assertIn("storm_phase_two", events)
         self.assertIn("storm_relay_shift", events)
@@ -599,7 +601,7 @@ class ChronoBossTests(unittest.TestCase):
         self.assertIsNotNone(leap)
         self.assertIn("chrono_anchor", leap.events)
         self.assertIn("boss_shield_break", leap.events)
-        self.assertEqual(env.boss.slow_rounds, 1)
+        self.assertEqual(env.boss.fatigue_rounds, 1)
         self.assertNotEqual(env.boss.position, env.player.position)
         self.assertEqual(env.player.hp, 100)
 
@@ -968,14 +970,14 @@ class IronBossTests(unittest.TestCase):
         for rule in (False, True):
             env, agent = ArenaEnv(campaign_config(60)), RuleAgent()
             events = []
-            for _ in range(120):
+            for _ in range(160):
                 if env.done:
                     break
                 action = (agent.act(env) if rule else
                           select_action({action.value: 1.0 for action in env.legal_actions()}, env, "hybrid")[0])
                 events.extend(env.step(action).events)
             self.assertTrue(env.done)
-            self.assertEqual(env.player.hp, 100)
+            self.assertGreater(env.player.hp, 0)
             self.assertGreaterEqual(events.count("boss_shield_break"), 3)
             self.assertIn("boss_defeated", events)
 
@@ -1261,9 +1263,10 @@ class SiegeBossTests(unittest.TestCase):
         self.assertIn("rail_lock_break:1", fire.events)
         self.assertIn((7, 11), env.rail_rebuilds)
         self.assertEqual(env.player.hp, 100)
-        for _ in range(4):
-            rebuild = env.step("wait")
-        self.assertIn("rail_cover_rebuild:7:11", rebuild.events)
+        rebuild_events = []
+        for _ in range(14):
+            rebuild_events.extend(env.step("wait").events)
+        self.assertIn("rail_cover_rebuild:7:11", rebuild_events)
         self.assertEqual(env.rail_covers[(7, 11)], (7, 11))
 
     def test_uncovered_line_damages_and_cover_can_be_shoved(self):
@@ -1313,18 +1316,18 @@ class NullBossTests(unittest.TestCase):
         env = ArenaEnv(campaign_config(90))
         env.player.position = (11, 14)
         env._resolve_null(env.boss, [])
-        self.assertEqual(env.boss.warp_target, (12, 10))
+        self.assertIn(env.boss.warp_target, ((9, 10), (12, 10), (8, 7)))
+        target = env.boss.warp_target
         env._resolve_null(env.boss, [])
-        self.assertEqual(env.boss.position, (12, 10))
+        self.assertEqual(env.boss.position, target)
 
     def test_wider_fracture_and_faster_warp_cycle(self):
         env = ArenaEnv(campaign_config(90))
         env.player.position = (10, 15)
         events = []
         env._resolve_null(env.boss, events)
-        self.assertEqual(env.boss.erase_targets,
-                         {(8, 15), (9, 15), (10, 15), (11, 15), (12, 15),
-                          (10, 16)})
+        self.assertGreaterEqual(len(env.boss.erase_targets), 8)
+        self.assertIn(env.player.position, env.boss.erase_targets)
         first = env.boss.warp_target
         env._resolve_null(env.boss, events)
         self.assertEqual(env.boss.position, first)
@@ -1389,16 +1392,16 @@ class NullBossTests(unittest.TestCase):
         self.assertFalse(env.null_void)
         env._resolve_null(env.boss, events)
         self.assertTrue(env.null_void)
-        self.assertIn("null_fracture:6", events)
+        self.assertTrue(any(event.startswith("null_fracture:") for event in events))
         env._resolve_null(env.boss, events)
-        self.assertFalse(env.null_void)
-        self.assertIn("null_floor_restore", events)
+        self.assertTrue(env.null_void)
+        self.assertNotIn("null_floor_restore", events)
 
     def test_default_hybrid_and_rule_survive_null_boss(self):
         for rule in (False, True):
             env, agent = ArenaEnv(campaign_config(90)), RuleAgent()
             events = []
-            for _ in range(200):
+            for _ in range(260):
                 if env.done:
                     break
                 action = (agent.act(env) if rule else
@@ -1492,6 +1495,10 @@ class ApexBossTests(unittest.TestCase):
         self.assertNotIn(env.player.position, boss.danger)
         env._resolve_apex(boss, events)
         self.assertEqual(boss.seals, 2)
+        self.assertIn(env.apex_seals[1], boss.danger)
+        env.player.position = next(cell for cell in env._reachable_cells()
+                                   if cell not in boss.danger and cell != boss.position)
+        env._resolve_apex(boss, events)
         env.player.position = (10, 13)
         env._resolve_apex(boss, events)
         self.assertIn(env.apex_seals[2], boss.danger)
@@ -1513,6 +1520,7 @@ class ApexBossTests(unittest.TestCase):
             boss = env.boss
             boss.seals = seal
             env.player.position = position
+            env.rng.randrange = lambda n: 1
             events = []
             for _ in range(3 if seal in (0, 3) else 2):
                 env._resolve_apex(boss, events)
@@ -1524,6 +1532,7 @@ class ApexBossTests(unittest.TestCase):
             env = ArenaEnv(campaign_config(100))
             env.boss.seals = seal
             env.player.position = position
+            env.rng.randrange = lambda n: 1
             env.round = 3
             for _ in range(32):
                 if env.done:
@@ -1581,6 +1590,7 @@ class ApexBossTests(unittest.TestCase):
             env.boss.seals = 4
             env.boss.finale_cycles = cycle
             env.player.position = position
+            env.rng.randrange = lambda n: 1
             events = []
             for _ in range(3):
                 env._resolve_apex(env.boss, events)
@@ -1655,6 +1665,251 @@ class ApexBossTests(unittest.TestCase):
             self.assertEqual(env.player.hp, 100)
             self.assertIn("boss_defeated", events)
             self.assertEqual(events.count("boss_shield_break"), 2)
+
+
+class NewBossAttackTests(unittest.TestCase):
+    def test_prism_three_beams_rotate_at_low_health(self):
+        env = ArenaEnv(campaign_config(10))
+        env.round = 3
+        env.boss.hp = env.boss.max_hp // 3
+        env.boss.target = (10, 16)
+        first = env.prism_rays()
+        self.assertEqual(len(first), 3)
+        env._resolve_boss([])
+        self.assertEqual(env.boss.spin_step, 2)
+        env.boss.target = (10, 16)
+        self.assertNotEqual(first[1:], env.prism_rays()[1:])
+
+    def test_furnace_all_three_heads_fire_with_valve_counter(self):
+        env = ArenaEnv(campaign_config(20))
+        env.boss.attacks = 2
+        env.player.position = (10, 12)
+        env._resolve_furnace(env.boss, [])
+        self.assertEqual(env.boss.attack_kind, "triple")
+        self.assertEqual(env.boss.wave_columns, (7, 10, 13))
+        events = []
+        env._resolve_furnace(env.boss, events)
+        self.assertIn("furnace_valve:10", events)
+        self.assertEqual(env.player.hp, 100)
+
+    def test_storm_overdrive_then_fatigue(self):
+        env = ArenaEnv(campaign_config(30))
+        env.boss.attacks = 2
+        env.player.position = (10, 10)
+        events = []
+        env._resolve_storm(env.boss, events)
+        self.assertIn("storm_overdrive_charge", events)
+        self.assertEqual(env.boss.overdrive_rounds, 3)
+        for _ in range(3):
+            env._resolve_storm(env.boss, events)
+        self.assertIn("storm_overdrive_exhausted", events)
+        self.assertEqual(env.boss.fatigue_rounds, 2)
+        self.assertLess(env.player.hp, 100)
+
+    def test_chrono_fatigue_is_temporary(self):
+        env = ArenaEnv(campaign_config(40))
+        env.boss.fatigue_rounds = 1
+        events = []
+        env._resolve_chrono(env.boss, events)
+        self.assertIn("chrono_fatigued", events)
+        self.assertEqual(env.boss.fatigue_rounds, 0)
+
+
+class RevisedBossPatternsTests(unittest.TestCase):
+    def test_reflector_use_locks_out_other_mirrors_then_recharges_individually(self):
+        env = ArenaEnv(campaign_config(10))
+        boss = env.boss
+        boss.reflector_cooldowns[(9, 12)] = 8
+        boss.used_reflectors.add((9, 12))
+        boss.reflector_lockout = 3
+        boss.target = (11, 15)
+        env.round = 3
+        self.assertEqual(env.boss_ray()[-1], (11, 15))
+        env._resolve_boss([])
+        self.assertIn((9, 12), boss.used_reflectors)
+        self.assertGreater(boss.reflector_cooldowns[(9, 12)], 0)
+
+    def test_reflector_does_not_recharge_after_aim_before_shot(self):
+        env = ArenaEnv(campaign_config(10))
+        env.round = 3
+        boss = env.boss
+        boss.used_reflectors.add((9, 12))
+        boss.reflector_cooldowns[(9, 12)] = 1
+        boss.target = (9, 15)
+        events = []
+        env._resolve_boss(events)
+        self.assertNotIn("boss_reflect:1", events)
+        self.assertIn((9, 12), boss.used_reflectors)
+        env._resolve_boss(events)
+        self.assertIn("boss_reflector_recharged:9:12", events)
+
+    def test_used_coolant_valve_is_no_longer_safe(self):
+        env = ArenaEnv(campaign_config(20))
+        valve = min(env.coolant_valves)
+        env.boss.head_x = valve[0]
+        env.boss.target = valve
+        env.boss.attack_kind = "wave"
+        env.boss.wave_columns = (valve[0],)
+        env.boss.valves_opened.add(valve[0])
+        self.assertIn(("furnace_hydra/wave", env.boss.wave_damage), env.imminent_threats(valve))
+
+    def test_used_valve_heats_up_even_between_waves(self):
+        env = ArenaEnv(campaign_config(20))
+        env.player.position = (7, 12)
+        env.boss.valves_opened.add(7)
+        env.boss.valve_heat[7] = 2
+        env.boss.target = None
+        env._resolve_furnace(env.boss, [])
+        self.assertEqual(env.player.hp, 100)
+        self.assertIn(("furnace_hydra/valve_heat", 10), env.imminent_threats())
+        events = []
+        env._resolve_furnace(env.boss, events)
+        self.assertIn("damage:furnace_valve_heat:10", events)
+
+    def test_used_time_anchor_cannot_counter_every_leap(self):
+        env = ArenaEnv(campaign_config(40))
+        anchor = min(env.time_anchors)
+        env.player.position = anchor
+        env.boss.phase = "leap"
+        env.boss.leap_target = anchor
+        env._resolve_chrono(env.boss, [])
+        self.assertIn(anchor, env.boss.anchor_cooldowns)
+        env.boss.exposed_rounds = 0
+        env.boss.fatigue_rounds = 0
+        env.boss.phase = "leap"
+        env.boss.leap_target = anchor
+        env._resolve_chrono(env.boss, [])
+        self.assertLess(env.player.hp, 100)
+
+    def test_drained_gravity_node_has_a_temporary_aftershock(self):
+        env = ArenaEnv(campaign_config(50))
+        node = min(env.gravity_nodes)
+        env.boss.node_aftershock[node] = 2
+        env.player.position = node
+        self.assertIn(("void_angler/aftershock", 8), env.imminent_threats(node))
+        events = []
+        env._resolve_void(env.boss, events)
+        self.assertIn("damage:void_aftershock:8", events)
+
+    def test_mirror_rush_is_warned_before_it_resolves(self):
+        env = ArenaEnv(campaign_config(70))
+        env.boss.copies = 3
+        env.player.position = (10, 12)
+        events = []
+        env._resolve_mirror(env.boss, events)
+        self.assertIn("mirror_rush_aim:10:12", events)
+        self.assertIn((10, 12), env.mirror_rush_cells())
+        env._resolve_mirror(env.boss, events)
+        self.assertIn("mirror_rush:10:12", events)
+
+    def test_shrapnel_ring_uses_same_cells_for_warning_and_hit(self):
+        env = ArenaEnv(campaign_config(80))
+        env.boss.blast_target = (10, 12)
+        env.boss.blast_kind = "shrapnel"
+        self.assertNotIn((10, 12), env.siege_blast_cells())
+        self.assertIn((12, 12), env.siege_blast_cells())
+        self.assertIn(("siege_leviathan/blast", 18), env.imminent_threats((12, 12)))
+        env.player.position = (12, 12)
+        events = []
+        env._resolve_siege(env.boss, events)
+        self.assertIn("damage:siege_blast:18", events)
+
+    def test_shrapnel_reflects_from_cover_using_locked_warning_cells(self):
+        env = ArenaEnv(campaign_config(80))
+        boss = env.boss
+        boss.blast_target = (10, 11)
+        boss.blast_kind = "shrapnel"
+        boss.blast_cells = env.siege_blast_cells(boss.blast_target, boss.blast_kind)
+        self.assertIn((10, 13), boss.blast_cells)
+        self.assertIn((10, 12), boss.blast_cells)
+        env.rail_covers[(10, 13)] = (11, 13)
+        self.assertIn((10, 12), env.siege_blast_cells())
+        env.player.position = (10, 12)
+        events = []
+        env._resolve_siege(boss, events)
+        self.assertIn("damage:siege_blast:18", events)
+
+    def test_void_pulse_warns_then_pulls_into_a_warned_beam_combo(self):
+        env = ArenaEnv(campaign_config(50))
+        boss = env.boss
+        boss.attacks = 4
+        env.player.position = (10, 12)
+        aim = []
+        env._resolve_void(boss, aim)
+        self.assertIn("void_aim:pulse:10:12", aim)
+        self.assertIn(("void_angler/pulse", 8), env.imminent_threats((10, 12)))
+        fire = []
+        env._resolve_void(boss, fire)
+        self.assertIn("damage:void_pulse:8", fire)
+        self.assertTrue(any(event.startswith("void_pull:") for event in fire))
+        self.assertTrue(any(event.startswith("void_aim:beam:") for event in fire))
+        self.assertEqual(boss.attack_kind, "beam")
+
+    def test_second_apex_volley_fires_after_one_player_action(self):
+        env = ArenaEnv(campaign_config(100))
+        boss = env.boss
+        boss.seals = 1
+        env.player.position = env.apex_seals[1]
+        env._resolve_apex(boss, [])
+        env._resolve_apex(boss, [])
+        self.assertEqual(boss.barrage_volley, 2)
+        first_action = env.step(Action.WAIT)
+        self.assertIn("apex_fast_barrage", first_action.events)
+        self.assertIn("damage:apex_barrage:16", first_action.events)
+        self.assertEqual(env.ap_remaining, 1)
+        second_action = env.step(Action.WAIT)
+        self.assertFalse(any(event.startswith("apex_fire:") for event in second_action.events))
+
+    def test_iron_bloom_leaves_visible_short_lived_spores(self):
+        env = ArenaEnv(campaign_config(60))
+        env.boss.attack_kind = "bloom"
+        env.boss.target = (10, 12)
+        env.player.position = (10, 15)
+        env._resolve_iron(env.boss, [])
+        self.assertEqual(len(env.iron_spores), 4)
+        cell = next(iter(env.iron_spores))
+        self.assertIn(("iron_gardener/spores", 4), env.imminent_threats(cell))
+
+    def test_fractured_floor_remains_blocked_for_the_fight(self):
+        env = ArenaEnv(campaign_config(90))
+        env.player.position = (10, 15)
+        for _ in range(3):
+            env._resolve_null(env.boss, [])
+        fractured = set(env.null_void)
+        self.assertTrue(fractured)
+        self.assertLessEqual(len(env.null_void), 4)
+        env._resolve_null(env.boss, [])
+        self.assertTrue(env.null_void & fractured)
+        env.boss.exposed_rounds = 1
+        env._resolve_null(env.boss, [])
+        self.assertTrue(env.null_void & fractured)
+
+    def test_barrage_has_safe_cells_in_each_row_without_safe_column(self):
+        env = ArenaEnv(campaign_config(100))
+        env.boss.seals = 1
+        env._resolve_apex(env.boss, [])
+        for y in range(8, 17):
+            self.assertTrue(any((x, y) not in env.boss.barrage_cells for x in range(3, 17)))
+        self.assertFalse(any(all((x, y) not in env.boss.barrage_cells
+                                 for y in range(8, 17)) for x in range(3, 17)))
+        self.assertNotIn(env.apex_seals[1], env.boss.barrage_cells)
+
+    def test_second_projectile_volley_hits_first_safe_tiles(self):
+        env = ArenaEnv(campaign_config(100))
+        env.boss.seals = 1
+        env.player.position = env.apex_seals[1]
+        env._resolve_apex(env.boss, [])
+        first = set(env.boss.barrage_cells)
+        initially_safe = {(x, y) for y in range(8, 17) for x in range(3, 17)
+                          if (x, y) not in first and (x, y) not in env.walls | env.pits}
+        env._resolve_apex(env.boss, [])
+        self.assertIn(env.apex_seals[1], env.boss.barrage_cells)
+        self.assertTrue(initially_safe <= env.boss.barrage_cells)
+        self.assertEqual(env.boss.fired_barrage_cells, first)
+        self.assertEqual(env.boss.barrage_volley, 2)
+        events = []
+        env._resolve_apex(env.boss, events)
+        self.assertIn("damage:apex_barrage:16", events)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $candidates = @(
@@ -14,7 +14,7 @@ $checkpoint = $candidates | Where-Object {
     (Test-Path (Join-Path $_ "best.safetensors"))
 } | Select-Object -First 1
 $nanoJevRoot = Join-Path $projectRoot "third_party\NanoJev"
-$serviceStarted = $false
+$serviceProcess = $null
 
 try {
     if (-not $checkpoint) {
@@ -25,14 +25,13 @@ try {
     } catch {
         $logRoot = Join-Path $projectRoot "runs"
         New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
-        Start-Process -FilePath $python `
+        $serviceProcess = Start-Process -FilePath $python `
             -ArgumentList @("scripts\serve_decisions.py", "--checkpoint-dir", $checkpoint,
                             "--web-root", "web", "--host", "127.0.0.1", "--port", "8765",
-                            "--precision", "fp32", "--max-length", "256") `
+                            "--precision", "fp32") `
             -WorkingDirectory $nanoJevRoot -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logRoot "demo_service.stdout.log") `
-            -RedirectStandardError (Join-Path $logRoot "demo_service.stderr.log") | Out-Null
-        $serviceStarted = $true
+            -RedirectStandardError (Join-Path $logRoot "demo_service.stderr.log") -PassThru
         $ready = $false
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             try {
@@ -40,6 +39,9 @@ try {
                 $ready = $true
                 break
             } catch {
+                if ($serviceProcess.HasExited) {
+                    throw "NanoJev 模型服务启动失败，请查看 runs\demo_service.stderr.log"
+                }
                 Start-Sleep -Seconds 1
             }
         }
@@ -47,9 +49,7 @@ try {
     }
     & $python (Join-Path $projectRoot "scripts\play_gui.py") --agent nanojev --decision-ms 280
 } finally {
-    if ($serviceStarted) {
-        Get-CimInstance Win32_Process | Where-Object {
-            $_.Name -like "python*.exe" -and $_.CommandLine -like "*serve_decisions.py*"
-        } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    if ($serviceProcess -and -not $serviceProcess.HasExited) {
+        Stop-Process -Id $serviceProcess.Id -Force -ErrorAction SilentlyContinue
     }
 }

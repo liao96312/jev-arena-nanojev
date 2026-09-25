@@ -5,7 +5,7 @@ from pathlib import Path
 
 from arena.env import ArenaEnv
 from arena.entities import EnemyType, IntentType
-from arena.boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, SiegeLeviathan, StormChoir, VoidAngler
+from arena.boss import ApexArbiter, ChronoMantis, FurnaceHydra, IronGardener, MirrorSeraph, NullWeaver, PrismWarden, SiegeLeviathan, StormChoir, VoidAngler
 
 AGENT_NAMES = {"random": "随机", "rule": "规则", "nanojev": "NanoJev", "jev": "Jev API"}
 ACTION_NAMES = {
@@ -141,6 +141,10 @@ class ArenaRenderer:
             center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
             pg.draw.circle(self.screen, (155, 245, 112), center, 8, 2)
             pg.draw.circle(self.screen, (238, 205, 95), center, 3)
+        for x, y in env.iron_spores:
+            center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
+            pg.draw.circle(self.screen, (232, 108, 253), center, 13, 3)
+            pg.draw.circle(self.screen, (254, 196, 250), center, 5)
         for position in env.root_plates:
             used = isinstance(env.boss, IronGardener) and position[0] in env.boss.refluxed_roots
             center = (position[0] * self.CELL + self.CELL // 2,
@@ -182,7 +186,8 @@ class ArenaRenderer:
             pg.draw.line(self.screen, (255, 155, 218),
                          (center[0] + 2, center[1]), (center[0] - 3, center[1] + 12), 3)
         for position in env.reflectors:
-            used = hasattr(env.boss, "used_reflectors") and position in env.boss.used_reflectors
+            used = isinstance(env.boss, PrismWarden) and (position in env.boss.used_reflectors or
+                                                          bool(env.boss.reflector_lockout))
             center = (position[0] * self.CELL + self.CELL // 2,
                       position[1] * self.CELL + self.CELL // 2)
             pg.draw.polygon(self.screen, (79, 90, 105) if used else (77, 216, 241),
@@ -192,9 +197,11 @@ class ArenaRenderer:
                          (center[0] - 7, center[1] + 6), (center[0] + 7, center[1] - 6), 2)
         for position in env.coolant_valves:
             opened = isinstance(env.boss, FurnaceHydra) and position[0] in env.boss.valves_opened
+            hot = opened and env.boss.valve_heat.get(position[0], 0) <= 1
             center = (position[0] * self.CELL + self.CELL // 2,
                       position[1] * self.CELL + self.CELL // 2)
-            pg.draw.circle(self.screen, (68, 183, 215) if opened else (87, 232, 255), center, 14, 3)
+            pg.draw.circle(self.screen, (255, 95, 60) if hot else
+                           (68, 183, 215) if opened else (87, 232, 255), center, 14, 3)
             pg.draw.circle(self.screen, (180, 245, 255), center, 7, 2)
             pg.draw.line(self.screen, (165, 241, 255), (center[0] - 8, center[1]),
                          (center[0] + 8, center[1]), 2)
@@ -211,16 +218,19 @@ class ArenaRenderer:
             pg.draw.rect(self.screen, (71, 211, 255), rect, 3, border_radius=6)
             pg.draw.circle(self.screen, (190, 248, 255), rect.center, 4)
         for position in env.time_anchors:
+            cooling = isinstance(env.boss, ChronoMantis) and position in env.boss.anchor_cooldowns
             center = (position[0] * self.CELL + self.CELL // 2,
                       position[1] * self.CELL + self.CELL // 2)
-            pg.draw.circle(self.screen, (230, 187, 255), center, 16, 3)
+            pg.draw.circle(self.screen, (112, 94, 125) if cooling else (230, 187, 255), center, 16, 3)
             pg.draw.line(self.screen, (255, 226, 177), center,
                          (center[0] + 6, center[1] - 7), 3)
         for position in env.gravity_nodes:
             drained = isinstance(env.boss, VoidAngler) and position in env.boss.drained_nodes
+            charged = isinstance(env.boss, VoidAngler) and position in env.boss.node_aftershock
             center = (position[0] * self.CELL + self.CELL // 2,
                       position[1] * self.CELL + self.CELL // 2)
-            pg.draw.circle(self.screen, (105, 96, 130) if drained else (181, 126, 255), center, 16, 3)
+            pg.draw.circle(self.screen, (255, 91, 163) if charged else
+                           (105, 96, 130) if drained else (181, 126, 255), center, 16, 3)
             pg.draw.circle(self.screen, (120, 113, 142) if drained else (237, 207, 255), center, 6, 2)
         for position in env.pits:
             self._sprite(position, "pit")
@@ -288,7 +298,7 @@ class ArenaRenderer:
                 start, end = (int(move[1]), int(move[2])), (int(move[3]), int(move[4]))
                 rush = ("boss_lunge" in events or "chrono_retreat" in events or any(event.startswith(
                     ("chrono_leap:", "siege_charge:", "null_warp", "apex_fire:charge:",
-                     "apex_fire:charge_gravity:")) for event in events))
+                     "apex_fire:charge_gravity:", "storm_overdrive_move:")) for event in events))
                 travel = boss_travel_progress(progress, rush,
                                               abs(end[0] - start[0]) + abs(end[1] - start[1]))
                 boss_position = (start[0] + (end[0] - start[0]) * travel,
@@ -327,7 +337,8 @@ class ArenaRenderer:
             sway = .38 if guarded else .22 if casting and not move else 0
             boss_draw_position = (boss_position[0] + sway * math.sin(pulse * .55),
                                   boss_position[1] + .09 * math.sin(pulse))
-            if storm and (env.boss.target or any(event.startswith(("storm_chain:", "storm_surge:"))
+            if storm and (env.boss.target or env.boss.overdrive_rounds or
+                          any(event.startswith(("storm_chain:", "storm_surge:"))
                                                   for event in events)):
                 sprite = self.storm_cast_frames[(pg.time.get_ticks() // 80) % 4]
                 center = ((boss_draw_position[0] + .5) * self.CELL,
@@ -343,6 +354,11 @@ class ArenaRenderer:
                              "boss_chrono_mantis" if chrono else
                              "boss_storm_choir" if storm else
                              "boss_furnace_hydra" if furnace else "boss_prism_warden")
+            if storm and env.boss.overdrive_rounds:
+                center = (round((boss_draw_position[0] + .5) * self.CELL),
+                          round((boss_draw_position[1] + .5) * self.CELL))
+                pg.draw.circle(self.screen, (107, 231, 255), center,
+                               32 + round(4 * math.sin(pulse * 2)), 3)
             if "boss_shield_break" in events:
                 self._sprite(boss_position, "effect_boss_law_convergence" if apex else
                              "effect_boss_grid_fracture" if null else
@@ -367,11 +383,14 @@ class ArenaRenderer:
                               "cage_barrage": "effect_boss_law_convergence",
                               "charge_gravity": "effect_boss_law_convergence"}[fired[1]]
                     if fired[1] in ("barrage", "cage_barrage"):
-                        safe = (int(fired[4]) if fired[1] == "cage_barrage" else 0)
-                        for y in (6, 9, 12, 15):
-                            for x in range(2, 18):
-                                if x % 3 != safe and (x, y) not in env.walls | env.pits:
-                                    self._sprite((x, y), "effect_boss_chain_lightning")
+                        for x, y in env.boss.fired_barrage_cells:
+                            if env.boss.fired_barrage_volley == 2:
+                                origin = (x + 1, y)
+                            else:
+                                origin = env.boss.position
+                            self._sprite((origin[0] + (x - origin[0]) * progress,
+                                          origin[1] + (y - origin[1]) * progress),
+                                         "projectile_boss_barrage")
                         if fired[1] == "cage_barrage":
                             self._sprite((int(fired[2]), int(fired[3])), effect)
                     else:
@@ -491,6 +510,10 @@ class ArenaRenderer:
                 _, x, y = event.split(":")
                 self._sprite((int(x), int(y)), "effect_boss_plasma_thorns")
                 continue
+            if event.startswith("iron_bloom:"):
+                _, x, y = event.split(":")
+                self._sprite((int(x), int(y)), "effect_boss_plasma_thorns")
+                continue
             if event.startswith("iron_vine_cut:"):
                 x, y = (int(value) for value in event.split(":")[1:])
                 self._sprite((x, y), "effect_boss_plasma_thorns")
@@ -566,12 +589,16 @@ class ArenaRenderer:
             if event.startswith("siege_blast:"):
                 _, kind, x, y = event.split(":")
                 x, y = int(x), int(y)
-                radius = 2 if kind == "cross" else 1
-                cells = {(x + offset, y) for offset in range(-radius, radius + 1)} | {
-                    (x, y + offset) for offset in range(-radius, radius + 1)}
-                for cell in cells:
-                    if env.in_bounds(cell):
-                        self._sprite(cell, "effect_boss_railgun")
+                for cell in env.boss.blast_cells or env.siege_blast_cells((x, y), kind):
+                    self._sprite(cell, "effect_boss_railgun")
+                continue
+            if event.startswith("void_pulse:"):
+                _, x, y = event.split(":")
+                x, y = int(x), int(y)
+                for dx in range(-1, 2):
+                    for dy in range(-1, 2):
+                        if abs(dx) + abs(dy) <= 1 and env.in_bounds((x + dx, y + dy)):
+                            self._sprite((x + dx, y + dy), "effect_boss_gravity_vortex")
                 continue
             if event.startswith("siege_charge_recoil:"):
                 x = int(event.split(":")[1])
@@ -635,7 +662,9 @@ class ArenaRenderer:
                          f"四印 {env.boss.seals}/4")
                 label, tint = "顶点裁决者", (255, 222, 151)
             elif isinstance(env.boss, StormChoir):
-                state = (f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
+                state = (f"高速充能 {env.boss.overdrive_rounds} 回合" if env.boss.overdrive_rounds else
+                         f"疲惫 {env.boss.fatigue_rounds} 回合" if env.boss.fatigue_rounds else
+                         f"核心开放 {env.boss.exposed_rounds} 回合" if env.boss.exposed_rounds else
                          "接地柱 0/4" if env.boss.target is None else
                          f"雷链 {max(0, len(env.storm_chain()) - 2)}/4 柱")
                 label, tint = "风暴合唱环", (132, 211, 255)
@@ -649,6 +678,12 @@ class ArenaRenderer:
                 label, tint = "棱镜守卫", (244, 164, 255)
             self._text(f"{label}  HP {env.boss.hp}/{env.boss.max_hp}  {state}",
                        left, 265, tint, small=True)
+            if isinstance(env.boss, PrismWarden):
+                self._text(f"镜组停摆 {env.boss.reflector_lockout}  ·  灰色镜子仍在冷却",
+                           left, 289, (226, 197, 245), small=True)
+            if isinstance(env.boss, FurnaceHydra):
+                self._text("已用阀门会发热；发红后离开", left, 289,
+                           (255, 191, 142), small=True)
             if isinstance(env.boss, VoidAngler):
                 self._text("已被钩住：下一动作不能移动，可近战／射击" if env.hooked_actions else
                            "钩锁瞄准时离开紫格；命中会被拉近", left, 289,
@@ -700,8 +735,11 @@ class ArenaRenderer:
                 if env.boss.kind == "verdict" and env.boss.countdown:
                     self._text("踩白色上诉位反弹判词；黄格会受伤", left, 312,
                                (219, 255, 210), small=True)
+                elif env.boss.kind == "barrage" and env.boss.barrage_volley == 2:
+                    self._text("第二波弹幕：前一波安全格现已危险", left, 312,
+                               (211, 233, 255), small=True)
                 elif env.boss.kind == "cage_barrage" and env.boss.countdown:
-                    self._text("打碎白门后进安全列；双击伤害封顶 36", left, 312,
+                    self._text("打碎白门后找安全格；第二波将变向", left, 312,
                                (211, 233, 255), small=True)
                 elif env.boss.kind == "charge_gravity" and env.boss.countdown:
                     self._text("紫色冲撞＋绿色爆心：离开两区", left, 312,
@@ -783,7 +821,7 @@ class ArenaRenderer:
                      "effect_boss_plasma_thorns", "boss_mirror_seraph",
                      "effect_boss_mirror_shards", "boss_siege_leviathan",
                      "effect_boss_railgun", "boss_null_weaver",
-                     "effect_boss_grid_fracture", "boss_apex_arbiter",
+                     "effect_boss_grid_fracture", "boss_apex_arbiter", "projectile_boss_barrage",
                      "effect_boss_law_convergence"):
             source = self.pg.image.load(str(root / f"{name}.png")).convert_alpha()
             bounds = source.get_bounding_rect(min_alpha=16)
@@ -816,6 +854,8 @@ class ArenaRenderer:
                 limit = round(self.CELL * (3.8 if name == "boss_null_weaver" else 2.3))
             elif name in ("boss_apex_arbiter", "effect_boss_law_convergence"):
                 limit = round(self.CELL * (4.2 if name == "boss_apex_arbiter" else 2.5))
+            elif name == "projectile_boss_barrage":
+                limit = round(self.CELL * .8)
             else:
                 limit = self.CELL if name == "wall" else self.CELL - 3
             scale = min(limit / cropped.get_width(), limit / cropped.get_height())
@@ -1042,6 +1082,10 @@ class ArenaRenderer:
                                   rect, border_radius=5)
                 self.pg.draw.rect(overlay, (255, 212, 230, 230) if urgent else (205, 231, 255, 190),
                                   rect, 2, border_radius=5)
+                if (x, y) in env.boss.fracture_cells:
+                    self.pg.draw.line(overlay, (90, 9, 118, 245),
+                                      (rect[0] + 5, rect[1] + 5),
+                                      (rect[0] + rect[2] - 5, rect[1] + rect[3] - 5), 4)
             if env.boss.warp_target:
                 x, y = env.boss.warp_target
                 center = (x * self.CELL + self.CELL // 2, y * self.CELL + self.CELL // 2)
@@ -1080,7 +1124,7 @@ class ArenaRenderer:
             path = env.mirror_ray()
             clones = [enemy for enemy in env.enemies if enemy.summoned_by and
                       enemy.summoned_by.startswith("mirror_")]
-            if not path and not env.boss.echo_target and not clones:
+            if not path and not env.boss.echo_target and not env.boss.rush_target and not clones:
                 return
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
             if path:
@@ -1107,6 +1151,10 @@ class ArenaRenderer:
                     self.pg.draw.rect(overlay, (251, 177, 255, 210), area, 2, border_radius=5)
                 self.pg.draw.circle(overlay, (255, 223, 255, 240),
                                     (int((x + .5) * self.CELL), int((y + .5) * self.CELL)), 6, 2)
+            for x, y in env.mirror_rush_cells():
+                self.pg.draw.rect(overlay, (255, 69, 123, 150),
+                                  (x * self.CELL + 2, y * self.CELL + 2,
+                                   self.CELL - 4, self.CELL - 4), border_radius=5)
             for clone in clones:
                 cx, cy = clone.position
                 self.pg.draw.circle(overlay, (181, 92, 241, 135),
@@ -1123,7 +1171,9 @@ class ArenaRenderer:
                 cells = [(boss.target[0], y) for y in range(8, 17)]
             else:
                 x, y = boss.target
-                cells = [(x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                radius = 2 if boss.attack_kind == "bloom" else 1
+                cells = [(x + dx, y + dy) for dx in range(-radius, radius + 1)
+                         for dy in range(-radius, radius + 1) if abs(dx) + abs(dy) <= radius]
             for x, y in cells:
                 if not env.in_bounds((x, y)):
                     continue
@@ -1239,7 +1289,7 @@ class ArenaRenderer:
             if boss.target is None:
                 return
             overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
-            if boss.attack_kind == "wave":
+            if boss.attack_kind in ("wave", "triple"):
                 columns = boss.wave_columns or ((boss.head_x - 1, boss.head_x, boss.head_x + 1)
                                                 if boss.hp <= boss.max_hp // 2 else (boss.head_x,))
                 cells = [(x, y) for x in columns for y in range(8, 17)]
@@ -1249,7 +1299,10 @@ class ArenaRenderer:
             for x, y in cells:
                 if not env.in_bounds((x, y)):
                     continue
-                safe = boss.attack_kind == "wave" and not boss.wave_rapid and (x, y) == (boss.head_x, 12)
+                safe = (boss.attack_kind in ("wave", "triple") and not boss.wave_rapid and
+                        (x, y) in env.coolant_valves and
+                        x not in boss.valves_opened and
+                        (boss.attack_kind == "triple" or x == boss.head_x))
                 edge = boss.attack_kind == "wave" and x != boss.head_x
                 self.pg.draw.rect(overlay, (70, 215, 250, 115) if safe else
                                   (255, 146, 70, 85) if edge else (255, 98, 34, 110),
@@ -1272,11 +1325,12 @@ class ArenaRenderer:
             self.pg.draw.circle(overlay, (255, 236, 170, 240), center, 19, 3)
             self.screen.blit(overlay, (0, 0))
             return
-        path = env.boss_ray()
-        if not path or not env.boss:
+        rays = env.prism_rays()
+        if not rays or not env.boss:
             return
+        path = rays[0]
         overlay = self.pg.Surface(self.screen.get_size(), self.pg.SRCALPHA)
-        for cell in path:
+        for cell in set().union(*rays):
             center = (cell[0] * self.CELL + self.CELL // 2,
                       cell[1] * self.CELL + self.CELL // 2)
             self.pg.draw.rect(overlay, (214, 65, 246, 75),
@@ -1292,7 +1346,11 @@ class ArenaRenderer:
                  env.boss.position[1] * self.CELL + self.CELL // 2)
         end = (path[-1][0] * self.CELL + self.CELL // 2,
                path[-1][1] * self.CELL + self.CELL // 2)
-        self.pg.draw.line(overlay, (235, 92, 255, 195), start, end, 3)
+        for ray in rays:
+            if ray:
+                end = (ray[-1][0] * self.CELL + self.CELL // 2,
+                       ray[-1][1] * self.CELL + self.CELL // 2)
+                self.pg.draw.line(overlay, (235, 92, 255, 195), start, end, 3)
         self.screen.blit(overlay, (0, 0))
 
     def _telegraph_line(self, start, end, kind: IntentType, countdown: int) -> None:
@@ -1366,6 +1424,7 @@ class ArenaRenderer:
             elif event.startswith("boss_hit:"): labels.append(f"核心受到 {event.split(':')[1]} 点伤害")
             elif event == "boss_defeated": labels.append("Boss 已击败！")
             elif event.startswith("furnace_aim:wave:"): labels.append("熔岩波预警：蓝色冷却阀可挡火！")
+            elif event.startswith("furnace_aim:triple:"): labels.append("三炉头同时喷火！站冷却阀可回灌。")
             elif event.startswith("furnace_aim:fireball:"): labels.append("火球锁定：离开橙色落点！")
             elif event == "furnace_phase_two": labels.append("熔炉过热：熔岩波变宽，火球会点燃地面！")
             elif event.startswith("furnace_ignite:"): labels.append("火球留下短暂燃烧格！")
@@ -1374,8 +1433,12 @@ class ArenaRenderer:
             elif event.startswith("furnace_fireball:"): labels.append("熔炉火球发射！")
             elif event.startswith("furnace_valve_strike:"): labels.append("从侧面敲开冷却阀：离开即将喷发的火线！")
             elif event.startswith("furnace_valve:"): labels.append("冷却阀反制成功！")
+            elif event == "furnace_restock_arrows": labels.append("熔炉冷却，回收箭矢 +3！")
             elif event.startswith("storm_aim:chain:"): labels.append("连锁雷网预警：导电位接地，或靠近导电位用 EMP 短接！")
             elif event.startswith("storm_aim:surge:"): labels.append("高压雷爆锁定：离开目标周围！")
+            elif event == "storm_overdrive_charge": labels.append("风暴合唱环自身充能：即将高速追击！")
+            elif event.startswith("storm_overdrive_move:"): labels.append("高速乱流逼近，近战伤害较低！")
+            elif event == "storm_overdrive_exhausted": labels.append("充能耗尽，进入短暂疲惫期！")
             elif event == "storm_phase_two": labels.append("风暴合唱环进入二阶段：雷爆更强！")
             elif event == "storm_relay_shift": labels.append("导电位移到两侧：去蓝色新落点！")
             elif event.startswith("storm_chain:"): labels.append("连锁闪电穿过接地柱！")
@@ -1392,6 +1455,7 @@ class ArenaRenderer:
             elif event.startswith("chrono_leap_aim:"): labels.append("跳杀锁定当前位置！离开紫格，或用时间锚反制！")
             elif event.startswith("chrono_leap_charge:"): labels.append("跃迁蓄力：落点不再改变！")
             elif event.startswith("chrono_leap:"): labels.append("时序螳螂跃迁！")
+            elif event == "chrono_fatigued": labels.append("高速连招后疲惫，趁机调整站位！")
             elif event == "chrono_retreat": labels.append("螳螂拉开距离，准备残影扫射！")
             elif event.startswith("chrono_retreat_aim:"): labels.append("紫色三格残影已锁定：横向闪开！")
             elif event.startswith("chrono_retreat_burst:"): labels.append("残影扫射爆发！")
@@ -1403,6 +1467,8 @@ class ArenaRenderer:
             elif event.startswith("void_aim:mine:"): labels.append("引力雷预警：站节点吸甲，或从邻格近战截断！")
             elif event.startswith("void_aim:beam:"): labels.append("虚空光束锁定：离开红色格！")
             elif event.startswith("void_aim:hook:"): labels.append("虚空钩锁定：离开紫色落点！")
+            elif event.startswith("void_aim:pulse:"): labels.append("引力脉冲锁定：离开紫色区域，随后会接光束！")
+            elif event.startswith("void_pulse:"): labels.append("引力脉冲爆发：靠近中心会被拉向 Boss！")
             elif event == "void_warp": labels.append("虚空钓手拉开距离，准备远程攻击！")
             elif event.startswith("void_mine:"): labels.append("引力雷爆发！")
             elif event.startswith("void_drain:"): labels.append("外层装甲被引力雷吸离！")
@@ -1412,17 +1478,21 @@ class ArenaRenderer:
             elif event.startswith("void_beam:"): labels.append("虚空光束发射！")
             elif event.startswith("iron_aim:flame:"): labels.append("焚烧线预警：根盘引火，或从邻格截断成熟藤蔓！")
             elif event.startswith("iron_aim:thorn:"): labels.append("荆棘落点锁定：离开橙色区域！")
+            elif event.startswith("iron_aim:bloom:"): labels.append("荆棘绽放预警：两格范围即将爆发！")
             elif event.startswith("iron_vine_grow:"): labels.append("机械藤蔓长成荆棘墙！")
             elif event.startswith("iron_vine_burn:"): labels.append("藤蔓被焚烧！")
             elif event.startswith("iron_reflux:"): labels.append("热回流击中 Boss 装甲！")
             elif event.startswith("iron_flame:"): labels.append("焚烧射线来袭！")
             elif event.startswith("iron_thorn:"): labels.append("荆棘爆发！")
+            elif event.startswith("iron_bloom:"): labels.append("荆棘大范围绽放！")
             elif event.startswith("boss_summon:furnace:"): labels.append("熔炉孵出爆裂幼体！")
             elif event.startswith("boss_summon:iron:"): labels.append("园丁放出藤蔓猎兽！")
             elif event.startswith("mirror_aim:"): labels.append("镜像动作已预告：注意实际方向！")
             elif event.startswith("mirror_shard:"): labels.append("镜像碎片射线！")
             elif event.startswith("mirror_echo_aim:"): labels.append("双重镜片十字锁定旧位置及侧翼：下一轮离开紫色区域！")
             elif event.startswith("mirror_echo:"): labels.append("双重镜片十字爆裂！")
+            elif event.startswith("mirror_rush_aim:"): labels.append("镜像炽天使突脸预警：离开红色近战区！")
+            elif event.startswith("mirror_rush:"): labels.append("镜像炽天使高速突袭！")
             elif event.startswith("mirror_clone_spawn:"): labels.append("镜像主角现身：攻击分身会反噬本体！")
             elif event.startswith("mirror_clone_strike:"): labels.append("镜像主角近身共振！")
             elif event.startswith("mirror_link:"): labels.append("镜像受击，本体承受部分伤害！")
@@ -1440,7 +1510,8 @@ class ArenaRenderer:
             elif event.startswith("rail_aim:"): labels.append("轨道炮开始两轮蓄力：寻找可移动掩体！")
             elif event.startswith("rail_charge:"): labels.append("轨道炮即将贯穿预警线！")
             elif event.startswith("rail_fire:"): labels.append("轨道炮贯穿！")
-            elif event.startswith("siege_blast_aim:"): labels.append("轰炸锁定：离开十字预警区域！")
+            elif event.startswith("siege_blast_aim:shrapnel:"): labels.append("破片预警：击中掩体会向邻格反弹，避开亮格！")
+            elif event.startswith("siege_blast_aim:"): labels.append("轰炸锁定：离开亮起的预警区域！")
             elif event.startswith("siege_blast:"): labels.append("利维坦轰炸：掩体可能被摧毁！")
             elif event.startswith("siege_pit_open:"): labels.append("地板塌陷成深坑，稍后会恢复！")
             elif event.startswith("siege_charge_aim:"): labels.append("利维坦冲撞锁定路径：侧移，或让移动掩体挡撞反噬侧甲！")
@@ -1454,7 +1525,7 @@ class ArenaRenderer:
             elif event.startswith("null_mark:"): labels.append("地板正在删除：两回合后离开标记格！")
             elif event.startswith("null_countdown:"): labels.append("地板即将消失：立刻离开粉色格！")
             elif event.startswith("null_fracture:"): labels.append("地板断裂！")
-            elif event == "null_floor_restore": labels.append("地板重新生成！")
+            elif event == "apex_barrage_second_aim": labels.append("第二波弹幕变向：刚才的安全格也会受击！")
             elif event == "null_displace": labels.append("被断裂地板弹开！")
             elif event == "null_reverse_write": labels.append("逆向写入完成：核心开放！")
             elif event.startswith("null_block:"): labels.append("Boss 封锁了一类动作，查看右侧提示！")
