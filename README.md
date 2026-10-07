@@ -6,7 +6,7 @@
 
 **由 NanoJev 驱动的本地战术竞技场**
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#数据生成与训练)
@@ -153,7 +153,7 @@ Jev Arena 是一个完全本地运行的网格战术游戏，也是 NanoJev、�
 
 ### 1. 准备环境
 
-推荐使用 Windows、Python 3.10+ 和 NVIDIA 显卡。本项目的默认配置针对 GTX 1660 SUPER 6GB 验证。
+推荐使用 Windows、Python 3.11+ 和 NVIDIA 显卡。本项目的默认配置针对 GTX 1660 SUPER 6GB 验证。
 
 ```powershell
 git clone https://github.com/liao96312/jev-arena-nanojev.git
@@ -303,7 +303,7 @@ Beam Teacher 蒸馏流水线：
 
 | 语言 / 工具 | 主要用途 | 仓库占比 |
 | --- | --- | --- |
-| Python 3.10+ | 游戏引擎、代理与搜索、数据生成、训练与评测（49 个模块） | 96.8% |
+| Python 3.11+ | 游戏引擎、代理与搜索、数据生成、训练与评测（49 个模块） | 96.8% |
 | PowerShell | GTX 1660S 训练流水线、一键演示脚本（`configs/`、`scripts/`） | 3.1% |
 | Batch | 一键启动入口 `启动游戏.cmd` | 0.1% 以下 |
 | Markdown + Mermaid | README 与 V2 / 远程武器 / 1660S 技术方案文档 | 不计入统计 |
