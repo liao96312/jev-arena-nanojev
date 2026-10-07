@@ -6,7 +6,7 @@
 
 **Локальная тактическая арена на базе NanoJev**
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#генерация-данных-и-обучение)
@@ -56,7 +56,7 @@ Jev Arena — это тактическая игра на сетке, целик
 
 ### 1. Подготовка окружения
 
-Рекомендуются Windows, Python 3.10+ и видеокарта NVIDIA. Конфигурация по умолчанию этого проекта проверена на GTX 1660 SUPER 6GB.
+Рекомендуются Windows, Python 3.11+ и видеокарта NVIDIA. Конфигурация по умолчанию этого проекта проверена на GTX 1660 SUPER 6GB.
 
 ```powershell
 git clone https://github.com/liao96312/jev-arena-nanojev.git
@@ -200,7 +200,7 @@ Arena генерирует допустимые действия для теку
 
 | Язык / инструмент | Основное применение | Доля в репозитории |
 | --- | --- | --- |
-| Python 3.10+ | Игровой движок, агенты и поиск, генерация данных, обучение и оценка (49 модулей) | 96.8% |
+| Python 3.11+ | Игровой движок, агенты и поиск, генерация данных, обучение и оценка (49 модулей) | 96.8% |
 | PowerShell | Пайплайны обучения GTX 1660S и скрипты запуска в один клик (`configs/`, `scripts/`) | 3.1% |
 | Batch | Единая точка входа для запуска `启动游戏.cmd` | менее 0.1% |
 | Markdown + Mermaid | README и документы технических решений V2 / дальнего оружия / 1660S | не учитывается |

@@ -6,7 +6,7 @@
 
 **NanoJev로 구동되는 로컬 전술 아레나**
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#데이터-생성과-훈련)
@@ -56,7 +56,7 @@ Jev Arena는 완전히 로컬에서 실행되는 그리드 전술 게임이자, 
 
 ### 1. 환경 준비
 
-Windows, Python 3.10+와 NVIDIA 그래픽 카드 사용을 권장합니다. 이 프로젝트의 기본 설정은 GTX 1660 SUPER 6GB를 기준으로 검증되었습니다.
+Windows, Python 3.11+와 NVIDIA 그래픽 카드 사용을 권장합니다. 이 프로젝트의 기본 설정은 GTX 1660 SUPER 6GB를 기준으로 검증되었습니다.
 
 ```powershell
 git clone https://github.com/liao96312/jev-arena-nanojev.git
@@ -200,7 +200,7 @@ Beam Teacher 증류 파이프라인:
 
 | 언어 / 도구 | 주요 용도 | 저장소 비중 |
 | --- | --- | --- |
-| Python 3.10+ | 게임 엔진, 에이전트와 탐색, 데이터 생성, 훈련과 평가 (49개 모듈) | 96.8% |
+| Python 3.11+ | 게임 엔진, 에이전트와 탐색, 데이터 생성, 훈련과 평가 (49개 모듈) | 96.8% |
 | PowerShell | GTX 1660S 훈련 파이프라인과 원클릭 데모 스크립트 (`configs/`, `scripts/`) | 3.1% |
 | Batch | 원클릭 시작 진입점 `启动游戏.cmd` | 0.1% 미만 |
 | Markdown + Mermaid | README와 V2 / 원거리 무기 / 1660S 기술 방안 문서 | 통계에서 제외 |

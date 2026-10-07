@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # arena/entities.py uses enum.StrEnum, so Python 3.11 is the minimum.
+        python-version: ["3.11", "3.12"]
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test dependencies
+        # Only pygame is needed by the test suite (GUI controls / sprite loading).
+        # torch/transformers from requirements-1660s.txt are GPU training deps and are not imported by tests.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pygame==2.6.1"
+      - name: Syntax check
+        run: python -m compileall -q agents arena nanojev_adapter scripts search tests
+      - name: Import check
+        run: python -c "import agents, arena, nanojev_adapter, search"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v

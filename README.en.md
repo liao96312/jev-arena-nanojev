@@ -6,7 +6,7 @@
 
 **A fully local tactical arena driven by NanoJev**
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#data-generation-and-training)
@@ -58,7 +58,7 @@ After the first speed-up level, the action interval drops one more tier every 12
 
 ### 1. Prepare the environment
 
-Windows, Python 3.10+ and an NVIDIA GPU are recommended. The default configuration is validated on a GTX 1660 SUPER 6GB.
+Windows, Python 3.11+ and an NVIDIA GPU are recommended. The default configuration is validated on a GTX 1660 SUPER 6GB.
 
 ```powershell
 git clone https://github.com/liao96312/jev-arena-nanojev.git
@@ -202,7 +202,7 @@ The pipelines support resuming from a checkpoint, and they write a temporary fil
 
 | Language / tool | Main use | Share of the repository |
 | --- | --- | --- |
-| Python 3.10+ | Game engine, agents and search, data generation, training and evaluation (49 modules) | 96.8% |
+| Python 3.11+ | Game engine, agents and search, data generation, training and evaluation (49 modules) | 96.8% |
 | PowerShell | GTX 1660S training pipelines and demo launchers (`configs/`, `scripts/`) | 3.1% |
 | Batch | Single-entry launcher `启动游戏.cmd` | under 0.1% |
 | Markdown + Mermaid | README plus the V2, ranged-weapon and 1660S design documents | not counted |

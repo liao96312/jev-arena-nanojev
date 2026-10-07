@@ -6,7 +6,7 @@
 
 **NanoJev によって駆動されるローカル戦術アリーナ**
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pygame](https://img.shields.io/badge/Pygame-2.6-2ea44f)](https://www.pygame.org/)
 [![NanoJev](https://img.shields.io/badge/AI-NanoJev-7C3AED)](https://github.com/TianyuCodings/NanoJev)
 [![GPU](https://img.shields.io/badge/Target-GTX%201660S-76B900?logo=nvidia&logoColor=white)](#データ生成とトレーニング)
@@ -56,7 +56,7 @@ Jev Arena は、完全にローカルで実行されるグリッド型戦術ゲ�
 
 ### 1. 環境の準備
 
-Windows、Python 3.10+、NVIDIA 製 GPU の使用を推奨します。本プロジェクトのデフォルト設定は GTX 1660 SUPER 6GB で検証されています。
+Windows、Python 3.11+、NVIDIA 製 GPU の使用を推奨します。本プロジェクトのデフォルト設定は GTX 1660 SUPER 6GB で検証されています。
 
 ```powershell
 git clone https://github.com/liao96312/jev-arena-nanojev.git
@@ -200,7 +200,7 @@ Beam Teacher 蒸留パイプライン：
 
 | 言語 / ツール | 主な用途 | リポジトリ比率 |
 | --- | --- | --- |
-| Python 3.10+ | ゲームエンジン、エージェントと探索、データ生成、トレーニングと評価（49 モジュール） | 96.8% |
+| Python 3.11+ | ゲームエンジン、エージェントと探索、データ生成、トレーニングと評価（49 モジュール） | 96.8% |
 | PowerShell | GTX 1660S トレーニングパイプラインとワンコマンドのデモスクリプト（`configs/`、`scripts/`） | 3.1% |
 | Batch | ワンクリック起動エントリ `启动游戏.cmd` | 0.1% 以下 |
 | Markdown + Mermaid | README と V2 / 遠距離武器 / 1660S の技術設計ドキュメント | 集計対象外 |
